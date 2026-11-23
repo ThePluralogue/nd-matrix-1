@@ -19,11 +19,11 @@ D230 traced Simple Tune (piano layer B, core 2) but could not rank it: its voice
 - [x] Harness: `arm_dsp_live.py --bus-tap/--bus-side/--off-ticks`, `arm_smp_flash.attach(bus=, bus_tap=)`, `tools/smp_bus_rank.py` (+ tests)
 - [x] Simple Tune ranked in `program-ranking.csv` (one row, CSV only): -27.0 dBFS held note, `smp_cycles` 0.01205, flag `piano_chain_no_audio` removed
 - [x] Release tap question answered: the ring gate closes after ~2,300 frames, the bus keeps the note; Astoria Grand release +6.9 dB over the held note
-- [x] Research note [smp-bus-tap](../../docs/research/smp-bus-tap.md), D233, audio-remaining row 24, OQ41
+- [x] Research note [smp-bus-tap](../../docs/research/smp-bus-tap.md), D235, audio-remaining row 24, OQ41
 - [x] No default flips
 
 ## Out of Scope
 Default flips, layer B of the 33 two-layer programs, identifying the post stage gate words, the dry native piano render, a census rerun.
 
 ## Summary of Changes
-New `B` command in `sharc-live` (`runner/live_bus.rs`, `SyModel::bus_tap` and `bus_file`), harness flags in `arm_dsp_live.py`, `smp_bus_rank.py` for the CSV record, Simple Tune row, [smp-bus-tap](../../docs/research/smp-bus-tap.md) and D233.
+New `B` command in `sharc-live` (`runner/live_bus.rs`, `SyModel::bus_tap` and `bus_file`), harness flags in `arm_dsp_live.py`, `smp_bus_rank.py` for the CSV record, Simple Tune row, [smp-bus-tap](../../docs/research/smp-bus-tap.md) and D235.

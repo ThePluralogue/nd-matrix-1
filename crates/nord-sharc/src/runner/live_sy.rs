@@ -83,7 +83,7 @@ pub struct SyModel {
     pub pace: usize,
     /// SMP ring tap: read the half the pointer does NOT hold on entry (`H 1`, OQ41 ring half test).
     pub other_half: bool,
-    /// Bus tap (`B ADDR`, D233): when set, the tapped frame is this DM bus pair instead of the
+    /// Bus tap (`B ADDR`, D235): when set, the tapped frame is this DM bus pair instead of the
     /// ring (SMP) or frame buffer (SY). `None` = off, the default.
     pub bus_tap: Option<BusTap>,
     /// Side file of the bus tap (`B ADDR MODE PATH`): the bus frames (f32 little endian L R) go

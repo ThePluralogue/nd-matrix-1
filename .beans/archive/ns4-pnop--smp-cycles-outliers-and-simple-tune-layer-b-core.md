@@ -20,7 +20,7 @@ D216 ran the SMP chain-tap census over 155 piano programs. `smp_cycles` had nine
 - [x] CSV update (5 cells, no audio committed): audit 148 `ok`, 4 `octave_shift`, 0 `mismatch`
 - [x] Simple Tune traced: layer B plays on piano core 2 (3 of 3 descriptors); its bus `0x9405A` is not in the tapped ring
 - [x] Research note, D230, audio-remaining row 24, OQ41
-- [x] Rank Simple Tune: done through the bus tap, bean ns4-bust (D233)
+- [x] Rank Simple Tune: done through the bus tap, bean ns4-bust (D235)
 
 ## Out of Scope
 Default flips, a bus tap in `sharc-live`, the dry native piano render, a full census rerun.

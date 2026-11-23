@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Rank a piano program from a bus tap file of `sharc-live` (D233).
+"""Rank a piano program from a bus tap file of `sharc-live` (D235).
 
 The ring tap (`smp_tap.f32`) carries the layer A bus `0x9404E` only (D230) and its post stage gate
-closes while a note is still held (D233), so a layer B program (Simple Tune, bus `0x9405A`) has no
+closes while a note is still held (D235), so a layer B program (Simple Tune, bus `0x9405A`) has no
 ring tap. `tools/arm_dsp_live.py --bus-tap 0x9405A --bus-side --log DIR` writes the bus frames to
 `DIR/smp_bus.f32` (f32 little endian `L R`, integer bus words x 2^-29). This tool reads that
 file and writes one `chain.jsonl` record in the form `tools/program_rank_smp.py` merges into the

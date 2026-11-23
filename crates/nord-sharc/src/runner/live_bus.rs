@@ -1,4 +1,4 @@
-//! Bus tap of `sharc-live` (D233, OQ41): reads an arbitrary DM bus pair after every audio
+//! Bus tap of `sharc-live` (D235, OQ41): reads an arbitrary DM bus pair after every audio
 //! interrupt instead of the SMP post stage ring.
 //!
 //! The ring tap of D200 carries only the bus the post stage sums (`0x9404E`, `0x9403E`); the

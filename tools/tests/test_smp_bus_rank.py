@@ -1,4 +1,4 @@
-"""Tests of `smp_bus_rank`: a bus tap file to the `program_rank_smp` chain record (D233)."""
+"""Tests of `smp_bus_rank`: a bus tap file to the `program_rank_smp` chain record (D235)."""
 
 import json
 import math

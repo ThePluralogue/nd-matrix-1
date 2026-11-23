@@ -1,4 +1,4 @@
-# SMP bus tap: Simple Tune (piano layer B) and the silent ring tap (OQ41, D233)
+# SMP bus tap: Simple Tune (piano layer B) and the silent ring tap (OQ41, D235)
 
 - **Checked:** 2026-11-23
 - **Sources (local, never committed):** SMP image `target/oracle/smp.bin`, Factory Restore RevK v1.66 `.ns4b`, `factory_programs/Program/Bank E/Simple Tune.ns4p`, `Bank B/Gradient Whl.ns4p`, `Bank A/Astoria Grand.ns4p`; live runs of `tools/arm_dsp_live.py --bus-tap ADDR --bus-side --log DIR` with `sharc-live` (new `B` command). Earlier notes: [piano-smp-pitch-outliers](piano-smp-pitch-outliers.md) s3, [piano-release-voice](piano-release-voice.md), [piano-bus-convention](piano-bus-convention.md) s2, [smp-voice](smp-voice.md) s2.

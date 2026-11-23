@@ -338,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
                     "the ring tap in smp_tap.f32 (same run)")  # fmt: skip
     ap.add_argument("--bus-tap", type=lambda v: int(v, 0), metavar="ADDR",
                     help="SMP tap: the DM word pair at ADDR (e.g. 0x9405A, piano layer B) "
-                    "instead of the post stage ring (D233)")  # fmt: skip
+                    "instead of the post stage ring (D235)")  # fmt: skip
     ap.add_argument("--out", type=Path)
     ns = ap.parse_args(argv)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
