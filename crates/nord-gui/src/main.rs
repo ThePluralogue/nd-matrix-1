@@ -649,6 +649,10 @@ fn main() -> eframe::Result<()> {
     let argv: Vec<String> = std::env::args().collect();
     // the saved Nord OS update file fills NS4_WAVE_TABLES (env and flags still win), before any thread
     nord_core::user_config::apply_saved_default();
+    // the OLED fonts come from the same file; without one the built-in painter stays (D128)
+    if let Err(e) = nord_core::oled_font::install_from_env() {
+        eprintln!("nd-matrix-1: OLED fonts not loaded ({e}); using the built-in OLED text");
+    }
     let firmware = match nord_core::render_opts::FirmwareOptions::from_args(&argv) {
         Ok(f) => f,
         Err(e) => {

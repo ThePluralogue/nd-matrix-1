@@ -51,6 +51,8 @@ impl OsUpdatePanel {
         };
         self.message = Some(match firmware_setting::set(Path::new(text), &config) {
             Ok(n) => {
+                // the OLED shows the firmware fonts at once; a file without them keeps the fallback
+                let _ = nord_core::oled_font::install_from_path(Path::new(text));
                 self.status = firmware_setting::status(None, &config);
                 if self.status.path.as_ref().map(|(p, _)| p) == self.session.as_ref() {
                     format!("OK: {n} WAVE tables read.")
