@@ -36,7 +36,7 @@ fn soft_keys_attack_slower_and_full_velocity_matches_the_shared_record() {
     let mut s = layer(true);
     let soft = passes_to(&mut s, 20, 0.5);
     let hard = passes_to(&mut s, 127, 0.5);
-    // The shared record of the same (settled) tables: the panel inverse of the law reads them (D237).
+    // The shared record of the same (settled) tables: the panel inverse of the law reads them (D235).
     let mut shared = layer(false);
     shared.settled_rates = true;
     let off = passes_to(&mut shared, 20, 0.5);
