@@ -67,6 +67,7 @@ impl LayerFxChain {
         self.eq_bass_db = src.eq_bass_db;
         self.eq_mid_db = src.eq_mid_db;
         self.eq_mid_freq_hz = src.eq_mid_freq_hz;
+        self.eq_mid_freq_index = src.eq_mid_freq_index;
         self.eq_treble_db = src.eq_treble_db;
         self.copy_comp_settings_from(src);
         self.copy_delay_settings_from(src);
