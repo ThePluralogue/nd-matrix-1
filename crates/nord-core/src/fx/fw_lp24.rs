@@ -16,11 +16,25 @@
 //! * VERIFIED: the cutoff / resonance words (`fw_lp24_tables`) at every index of the capture.
 //! * VERIFIED: smoothing `K = 0.99078` (`0x3F7DA39E`): the oracle golden settles on it (a different
 //!   `K` changes the `c[-26]` glide and the output words).
+//! * VERIFIED (D234): the knob mapping. The file's signed Mid count equals the `kAmpMid` cell the
+//!   booted firmware holds after recalling the program, and the file's Mid Freq index equals the
+//!   `kAmpMidFreq` cell (`tools/arm_program_amp_mid.py`, `docs/research/data/fx-lp24-recall.csv`);
+//!   the engine fields round trip to those indices exactly (`mid_counts_of_res`, `freq_index`;
+//!   `tests_fw_lp24_mapping.rs`). The response per Mid position equals the oracle's within
+//!   0.01 dB (`tests_fw_lp24_sweep.rs`, `docs/research/data/fx-lp24-mid-sweep.csv`).
 //! * ASSUMED: that the recurrence runs at the engine rate (the firmware's is 43,402.34 Hz, so
-//!   corners are `fs / 43402.34` higher at other rates, as for the other ports) and that the
-//!   Mid knob maps to `kAmpMid` counts as `res / 10 * 120 - 60` (`LayerFxChain::process_fw_lp24`).
+//!   corners are `fs / 43402.34` higher at other rates, as for the other ports; no hardware clip).
 
 use super::fw_lp24_tables as tab;
+
+/// `kAmpMid` counts `-60..=60` of the engine's `0..=10` filter resonance (`FxDecoded::amp_filter_res`
+/// is the exact inverse of the file's signed count: `10 * (60 + count) / 120`).
+///
+/// VERIFIED (D234): file count == recalled `kAmpMid` cell, round trip exact for all 121 counts
+/// (`tests_fw_lp24_mapping.rs`).
+pub(super) fn mid_counts_of_res(res: f32) -> f32 {
+    (res / 10.0).clamp(0.0, 1.0) * 120.0 - 60.0
+}
 
 /// VERIFIED: coefficient smoothing factor (`0x3F7DA39E`, oracle fit of the `c[-26]` glide).
 const K: f32 = f32::from_bits(0x3F7D_A39E);

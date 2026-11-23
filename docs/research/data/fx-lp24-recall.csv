@@ -1,0 +1,27 @@
+program,file_type_mid_freq,recalled_type_mid_freq,ok,lossy_hz_indices
+Program/Bank A/Boxxx.ns4p,8/0/25,8/0/25,1,
+Program/Bank A/Shoreline Whl.ns4p,8/-60/54,8/-60/54,1,
+Program/Bank A/Sidechain Whl II.ns4p,8/-24/85;9/-46/55,8/-24/85;9/-46/55,1,
+Program/Bank A/The Long Dark Whl.ns4p,8/-60/113,8/-60/113,1,
+Program/Bank B/Chrome Layer.ns4p,8/-60/100,8/-60/100,1,
+Program/Bank B/FM Cloud Whl.ns4p,8/18/75;8/24/103,8/18/75;8/24/103,1,
+Program/Bank B/Gradient Whl.ns4p,8/-60/90;8/0/79,8/-60/90;8/0/79,1,
+Program/Bank C/Crackle n Pd Whl.ns4p,8/-60/76;9/-8/80,8/-60/76;9/-8/80,1,76;80
+Program/Bank C/Dance Lead.ns4p,9/-22/32,9/-22/32,1,
+Program/Bank C/Distorted Whl II.ns4p,8/-48/99;8/-25/97,8/-48/99;8/-25/97,1,
+Program/Bank C/Ghost Melody.ns4p,8/-19/113,8/-19/113,1,
+Program/Bank C/Melody Pearls.ns4p,8/-60/90,8/-60/90,1,
+Program/Bank C/Stereo AnaStr II.ns4p,8/-30/80,8/-30/80,1,80
+Program/Bank D/HP Splash Whl.ns4p,8/-60/97;8/-60/102,8/-60/97;8/-60/102,1,
+Program/Bank D/Marimba Pad Whl.ns4p,9/-60/31,9/-60/31,1,
+Program/Bank D/Mirror Image Pad.ns4p,8/-60/67;8/-60/109,8/-60/67;8/-60/109,1,
+Program/Bank E/Helium Whl.ns4p,9/-60/55,9/-60/55,1,
+Program/Bank E/Lost Cause EP.ns4p,8/-30/80,8/-30/80,1,80
+Program/Bank E/PineScape Synth.ns4p,8/-60/87,8/-60/87,1,87
+Program/Bank E/Singing Upright.ns4p,8/-60/84,8/-60/84,1,84
+Program/Bank E/Sub Surface.ns4p,8/0/79;8/18/71,8/0/79;8/18/71,1,
+Program/Bank F/Bell Strings.ns4p,9/-60/21;9/-60/53,9/-60/21;9/-60/53,1,
+Program/Bank F/EP Steps.ns4p,9/29/73,9/29/73,1,
+Program/Bank F/Gravity Whl.ns4p,8/-60/90;8/-60/97;8/-32/52,8/-60/90;8/-60/97;8/-32/52,1,
+Program/Bank F/ScissorSplit Whl.ns4p,8/-60/65;8/-14/79,8/-60/65;8/-14/79,1,
+Program/Bank F/Unclocked Pad.ns4p,9/-60/38;9/-60/39;9/-60/80,9/-60/38;9/-60/39;9/-60/80,1,80

@@ -245,6 +245,11 @@ impl FxDecoded {
         (u8::from(self.delay_ping_pong) << 1) | u8::from(self.delay_fb_filter)
     }
 
+    /// Exact Mid Freq index `0..=127` of the file (the `kAmpMidFreq` value the firmware recalls).
+    pub fn eq_mid_freq_index(&self) -> u8 {
+        (self.eq_mid_freq_norm.clamp(0.0, 1.0) * 127.0).round() as u8
+    }
+
     /// Computes EQ Mid center frequency in Hz (`200..8000 Hz`) from the 128-step hardware table.
     pub fn eq_mid_freq_hz(&self) -> f32 {
         crate::fx::eq_freq_hz_from_norm(self.eq_mid_freq_norm)

@@ -24,6 +24,7 @@ The `.dmg` is an Apple UDIF image: 512-byte `koly` trailer, XML plist with `mish
 
 ## Implications
 
+- Terms check: a string search of the v1.66 `.exe` found no EULA or reverse-engineering clause; limits in [LEGAL](../LEGAL.md) section 2.
 - The user needs one download and no unpacking tool (D129).
 - Reading costs one pass over the file at each start (`.dmg`: zlib decode of 40 MB).
 
