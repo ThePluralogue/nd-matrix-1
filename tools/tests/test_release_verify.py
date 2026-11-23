@@ -3,7 +3,7 @@ import struct
 import pytest
 import release_package as rp
 import release_verify as rv
-from test_release_package import LIN, MAC, WIN, make_tree
+from test_release_package import LIN, MAC, NOTICES_OK, WIN, make_tree
 
 README_OK = "This plugin has NOT been verified in any DAW yet."
 
@@ -52,6 +52,54 @@ def build(tmp_path, platform, *, clap=None, vst3=None, readme=README_OK, extra=N
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             (root / rel).write_bytes(data)
     return rp.package(platform.triple, "v1.2.3", tmp_path / "out", root)
+
+
+def _drop(archive, member):
+    """Rewrite `archive` (zip or tar.gz) without the file whose name ends in `member`."""
+    import tarfile
+    import zipfile
+
+    files = rv.read_archive(archive)
+    keep = {n: d for n, d in files.items() if not n.endswith(member)}
+    assert len(keep) == len(files) - 1
+    archive.unlink()
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(archive, "w") as zf:
+            for n, d in keep.items():
+                zf.writestr(n, d)
+    else:
+        import io
+
+        with tarfile.open(archive, "w:gz") as tf:
+            for n, d in keep.items():
+                info = tarfile.TarInfo(n)
+                info.size = len(d)
+                tf.addfile(info, io.BytesIO(d))
+    rp.write_sha256(archive)
+
+
+@pytest.mark.parametrize("platform", [WIN, LIN, MAC])
+def test_missing_third_party_notices_fails_release(tmp_path, platform):
+    archive = build(tmp_path, platform)
+    assert rv.verify(archive, platform.triple) == []
+    _drop(archive, "/THIRD_PARTY_LICENSES.html")
+    problems = rv.verify(archive, platform.triple)
+    assert "missing THIRD_PARTY_LICENSES.html" in problems
+
+
+def test_stub_or_wrong_third_party_notices_fail_release(tmp_path):
+    stub = build(tmp_path / "a", LIN, extra={"THIRD_PARTY_LICENSES.html": b"<html></html>"})
+    assert any("bytes (expected a full listing)" in p for p in rv.verify(stub, LIN.triple))
+    no_text = b"x" * 5000
+    bad = build(tmp_path / "b", LIN, extra={"THIRD_PARTY_LICENSES.html": no_text})
+    problems = rv.verify(bad, LIN.triple)
+    assert "THIRD_PARTY_LICENSES.html lacks 'MIT License'" in problems
+    assert "THIRD_PARTY_LICENSES.html lacks 'Apache License'" in problems
+
+
+def test_check_notices_accepts_real_listing_and_ignores_absent():
+    assert rv.check_notices(NOTICES_OK.encode()) == []
+    assert rv.check_notices(None) == []  # reported by check_layout
 
 
 def test_pe_exports_parses_names():
