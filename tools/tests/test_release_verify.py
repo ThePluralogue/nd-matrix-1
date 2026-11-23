@@ -87,6 +87,15 @@ def test_missing_third_party_notices_fails_release(tmp_path, platform):
     assert "missing THIRD_PARTY_LICENSES.html" in problems
 
 
+@pytest.mark.parametrize("platform", [WIN, LIN, MAC])
+@pytest.mark.parametrize("name", ["ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"])
+def test_missing_legal_notice_fails_release(tmp_path, platform, name):
+    archive = build(tmp_path, platform)
+    assert rv.verify(archive, platform.triple) == []
+    _drop(archive, "/" + name)
+    assert f"missing {name}" in rv.verify(archive, platform.triple)
+
+
 def test_stub_or_wrong_third_party_notices_fail_release(tmp_path):
     stub = build(tmp_path / "a", LIN, extra={"THIRD_PARTY_LICENSES.html": b"<html></html>"})
     assert any("bytes (expected a full listing)" in p for p in rv.verify(stub, LIN.triple))

@@ -11,7 +11,8 @@ Archive layout (one top-level folder, so extraction never litters the cwd):
     nd-matrix-1-<tag>-<platform>/
         ns4[.exe]  nd-matrix-1[.exe]  nord-plugin-standalone[.exe]
         nd-matrix-1.clap  nd-matrix-1.vst3/
-        README.txt  HOST_COMPATIBILITY.md  THIRD_PARTY_LICENSES.html  [LICENSE*]
+        README.txt  HOST_COMPATIBILITY.md  THIRD_PARTY_LICENSES.html
+        ADDITIONAL-PERMISSIONS.md  TRADEMARKS.md  [LICENSE*]
 
 Verify a built archive with `tools/release_verify.py`.
 """
@@ -42,9 +43,12 @@ EXTRA_DOCS = (("docs/HOST_COMPATIBILITY.md", "HOST_COMPATIBILITY.md"),)
 # Third-party license notices for every crate in the binaries (D238). Generated at release time
 # by `cargo about generate` (see docs/RELEASING.md); never committed. Shipped next to LICENSE.
 THIRD_PARTY_NOTICES = "THIRD_PARTY_LICENSES.html"
+# Licensor permission for musicians and the name/icon policy (D241). Committed in the repo root,
+# shipped next to LICENSE in every release; a release without them is refused.
+LEGAL_NOTICES = ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md")
 # Documentation files every installer layout places beside the license (README.txt is staged
-# from README_SRC, the others from EXTRA_DOCS and THIRD_PARTY_NOTICES).
-DOC_FILES = ("README.txt", "HOST_COMPATIBILITY.md", THIRD_PARTY_NOTICES)
+# from README_SRC, the others from EXTRA_DOCS, THIRD_PARTY_NOTICES and LEGAL_NOTICES).
+DOC_FILES = ("README.txt", "HOST_COMPATIBILITY.md", THIRD_PARTY_NOTICES, *LEGAL_NOTICES)
 TAG_RE = re.compile(r"^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$")
 
 
@@ -153,6 +157,8 @@ def collect(
     for src, dest in EXTRA_DOCS:
         items.append((need(root / src), dest))
     items.append((_need_notices(root), THIRD_PARTY_NOTICES))
+    for name in LEGAL_NOTICES:
+        items.append((need(root / name), name))
     for lic in sorted(root.glob("LICENSE*")):
         if lic.is_file():
             items.append((lic, lic.name))
