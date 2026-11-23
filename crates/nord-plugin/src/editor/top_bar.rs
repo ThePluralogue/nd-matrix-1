@@ -47,7 +47,11 @@ pub fn label(which: BarClick, debug_open: bool) -> &'static str {
 }
 
 /// Draw the pills left to right; returns the one clicked this frame.
-pub fn show(ui: &mut Ui, debug_open: bool) -> Option<BarClick> {
+pub fn show(
+    ui: &mut Ui,
+    debug_open: bool,
+    zoom: &mut nord_gui::panel::baked_zoom::BakedZoom,
+) -> Option<BarClick> {
     let mut clicked = None;
     ui.spacing_mut().item_spacing.x = 5.0;
     ui.spacing_mut().button_padding = egui::vec2(7.0, 1.5);
@@ -58,6 +62,7 @@ pub fn show(ui: &mut Ui, debug_open: bool) -> Option<BarClick> {
                 clicked = Some(which);
             }
         }
+        nord_gui::panel::baked_zoom::bar_controls(ui, zoom);
     });
     clicked
 }
@@ -85,7 +90,8 @@ mod tests {
         let ctx = egui::Context::default();
         let mut got = Some(BarClick::Help);
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| got = show(ui, false));
+            egui::CentralPanel::default()
+                .show(ctx, |ui| got = show(ui, false, &mut Default::default()));
         });
         assert_eq!(got, None);
     }

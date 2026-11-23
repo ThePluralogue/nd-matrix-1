@@ -474,18 +474,9 @@ fn render_dialog_contents(
                 ui.add_space(10.0);
                 shadcn_card(
                     ui,
-                    "3. Quick Controls & Shortcuts",
-                    "Mouse, keyboard, and window tips.",
-                    |ui| {
-                        for tip in [
-                            "• Drag & drop .ns4b, .ns4p, .npno, or .nsmp4 files directly onto the instrument.",
-                            "• Scroll mouse wheel over knobs, faders, drawbars, or the Mod Wheel for fine adjustments.",
-                            "• Computer keyboard: A–K white keys, W/E/T/Y/U black keys, Z/X octave, C/V velocity, Space sustain.",
-                            "• Drag the empty transparent top strip to move the window; drag edges/bottom-right corner to resize.",
-                        ] {
-                            ui.label(RichText::new(tip).size(11.0).color(ZINC_400));
-                        }
-                    },
+                    "3. Commands",
+                    "Zoom, play, mouse, window and files. Full guide: docs/guides/commands.md.",
+                    |ui| crate::help_commands::show(ui, ZINC_50, ZINC_400),
                 );
             }
         });

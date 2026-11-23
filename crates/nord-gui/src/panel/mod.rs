@@ -7,6 +7,7 @@ mod aux_flag;
 mod baked_audit_tests;
 mod baked_buttons;
 pub mod baked_view;
+pub mod baked_zoom;
 mod bay_effects;
 mod bay_master;
 mod bay_organ;

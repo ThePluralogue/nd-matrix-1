@@ -196,7 +196,7 @@ pub fn draw_editor<W: ParamWriter>(
         .show_separator_line(false)
         .frame(bar_frame)
         .show(ctx, |ui| {
-            if let Some(click) = top_bar::show(ui, st.debug_dialog.open) {
+            if let Some(click) = top_bar::show(ui, st.debug_dialog.open, &mut st.panel.baked_zoom) {
                 st.open_for(click);
             }
         });
@@ -459,6 +459,89 @@ mod tests {
                 .any(|e| matches!(e, nord_core::midi::MidiEvent::NoteOn { note: 60, .. })),
             "{played:?}"
         );
+    }
+
+    /// Window point inside bay `name` near its top-left corner, where the plate has no control.
+    fn bay_corner_point(ctx: &Context, name: &str) -> Pos2 {
+        let plate: Rect = ctx
+            .data(|d| d.get_temp(Id::new("ns4_baked_plate_rect")))
+            .expect("plate rect");
+        let mut p = Pos2::ZERO;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let l = BakedPanelAssets::get_or_load(ctx).layout;
+            let b = &l.bays[name];
+            p = Pos2::new(
+                plate.left() + (b.x + 0.004) * plate.width(),
+                plate.top() + (b.y + 0.004) * plate.height(),
+            );
+        });
+        p
+    }
+
+    /// Hovering empty plate of a bay marks it, and a click zooms the editor to that bay (the
+    /// user reported zoom missing in the VST). A second click goes back to the whole panel.
+    #[test]
+    fn hovering_then_clicking_a_bay_zooms_the_editor_to_it() {
+        let (_params, mut st, _rx) = state();
+        let egui_state = EguiState::from_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1);
+        let ctx = Context::default();
+        let size = default_size_vec();
+        for _ in 0..3 {
+            frame_with(&ctx, &egui_state, &mut st, size, vec![]);
+        }
+        let pos = bay_corner_point(&ctx, "bay-organ");
+        let moved = vec![egui::Event::PointerMoved(pos)];
+        frame_with(&ctx, &egui_state, &mut st, size, moved);
+        frame_with(&ctx, &egui_state, &mut st, size, vec![]);
+        assert_eq!(st.panel.baked_zoom.hover, Some(nord_panel::Section::Organ));
+        click_at(&ctx, &egui_state, &mut st, size, pos);
+        assert!(st.panel.baked_zoom.zoom > 1.5, "{:?}", st.panel.baked_zoom);
+        assert_eq!(
+            st.panel.baked_zoom.section,
+            Some(nord_panel::Section::Organ)
+        );
+    }
+
+    /// The digit keys zoom the editor too (when the host gives it the keyboard).
+    #[test]
+    fn the_digit_keys_zoom_the_editor_and_escape_fits() {
+        let (_params, mut st, _rx) = state();
+        let egui_state = EguiState::from_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1);
+        let ctx = Context::default();
+        let size = default_size_vec();
+        let key = |k, pressed| egui::Event::Key {
+            key: k,
+            physical_key: Some(k),
+            pressed,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        for _ in 0..3 {
+            frame_with(&ctx, &egui_state, &mut st, size, vec![]);
+        }
+        frame_with(
+            &ctx,
+            &egui_state,
+            &mut st,
+            size,
+            vec![key(egui::Key::Num2, true)],
+        );
+        frame_with(
+            &ctx,
+            &egui_state,
+            &mut st,
+            size,
+            vec![key(egui::Key::Num2, false)],
+        );
+        assert!(st.panel.baked_zoom.zoom > 1.5, "{:?}", st.panel.baked_zoom);
+        frame_with(
+            &ctx,
+            &egui_state,
+            &mut st,
+            size,
+            vec![key(egui::Key::Escape, true)],
+        );
+        assert!((st.panel.baked_zoom.zoom - 1.0).abs() < 1e-4);
     }
 
     #[test]

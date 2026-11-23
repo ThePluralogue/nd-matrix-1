@@ -94,6 +94,8 @@ a child that runs over 30 s. A whole-panel shot is limited by the OS window size
 is capped at 1x for that reason). F12 still saves the live window to `screenshot.png`. Code:
 `crates/nord-gui/src/screenshot.rs`.
 
+Focus view and panorama below apply to the non-baked panel only. The baked plate (default) zooms with `panel/baked_zoom.rs`: keys `1`-`5`, `0` / `Esc`, `+` / `-`, Ctrl + scroll, drag to pan, bar pills; see [Commands and zoom](guides/commands.md).
+
 Focus view (B12): click a section header or press `Z` (`Shift+Z` while the Computer keyboard is on; section under the pointer, else the last
 one) to zoom that section to fill the window (up to 4x, crisp text: the egui zoom factor, not a
 bitmap scale); `Esc` returns, `1`-`5` jump to Organ, Piano, Program, Synth, Layer Effects. In the

@@ -340,6 +340,10 @@ impl eframe::App for Stage4App {
                                     self.debug_dialog
                                         .open_tab(nord_gui::debug_dialog::DebugTab::Guide);
                                 }
+                                nord_gui::panel::baked_zoom::bar_controls(
+                                    ui,
+                                    &mut self.state.baked_zoom,
+                                );
 
                                 // Draggable empty space between left pills and right window icons
                                 let drag_w = (ui.available_width() - 52.0).max(12.0);
