@@ -340,6 +340,11 @@ impl eframe::App for Stage4App {
                                     self.debug_dialog
                                         .open_tab(nord_gui::debug_dialog::DebugTab::Guide);
                                 }
+                                if hw_pill(ui, nord_gui::sponsor::SPONSOR_LABEL).clicked() {
+                                    ctx.open_url(egui::OpenUrl::new_tab(
+                                        nord_gui::sponsor::SPONSOR_URL,
+                                    ));
+                                }
                                 nord_gui::panel::baked_zoom::bar_controls(
                                     ui,
                                     &mut self.state.baked_zoom,
