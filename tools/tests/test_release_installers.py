@@ -2,7 +2,7 @@ import plistlib
 
 import pytest
 import release_installers as ri
-from test_release_package import LIN, MAC, WIN, make_tree
+from test_release_package import LIN, MAC, NOTICES_OK, WIN, make_tree
 
 
 def _make_tree_with_licenses(tmp_path, platform):
@@ -38,6 +38,10 @@ def test_stage_windows_inno_layout_and_iss(tmp_path):
     assert "VersionInfoVersion=1.2.3" in iss
     assert "LicenseFile=" in iss
     assert "AppSupportURL" not in iss
+    assert "THIRD_PARTY_LICENSES.html" in iss
+    assert "ignoreversion" in next(
+        line for line in iss.splitlines() if "THIRD_PARTY_LICENSES.html" in line
+    )
 
     stage_dir = work_dir / "win-inno-stage"
     assert (stage_dir / "ns4.exe").exists()
@@ -47,6 +51,7 @@ def test_stage_windows_inno_layout_and_iss(tmp_path):
         stage_dir / "nd-matrix-1.vst3" / "Contents" / "x86_64-win" / "nd-matrix-1.vst3"
     ).exists()
     assert not (stage_dir / "stray.ns4b").exists()
+    assert (stage_dir / "THIRD_PARTY_LICENSES.html").exists()
 
 
 def test_stage_linux_deb_layout_and_control(tmp_path):
@@ -76,7 +81,10 @@ def test_stage_linux_deb_layout_and_control(tmp_path):
         / "nd-matrix-1.so"
     ).exists()
     assert (pkg_root / "usr" / "share" / "applications" / "nd-matrix-1.desktop").exists()
-    assert (pkg_root / "usr" / "share" / "doc" / "nd-matrix-1" / "LICENSE-PLUGIN").exists()
+    doc_dir = pkg_root / "usr" / "share" / "doc" / "nd-matrix-1"
+    assert (doc_dir / "LICENSE-PLUGIN").exists()
+    assert (doc_dir / "LICENSE").exists()
+    assert (doc_dir / "THIRD_PARTY_LICENSES.html").read_text(encoding="utf-8") == NOTICES_OK
 
 
 def test_stage_linux_appdir(tmp_path):
@@ -90,6 +98,9 @@ def test_stage_linux_appdir(tmp_path):
     assert (appdir / "nd-matrix-1.desktop").exists()
     assert (appdir / "nd-matrix-1.svg").exists()
     assert (appdir / "usr" / "bin" / "nd-matrix-1").exists()
+    doc_dir = appdir / "usr" / "share" / "doc" / "nd-matrix-1"
+    assert (doc_dir / "LICENSE").exists()
+    assert (doc_dir / "THIRD_PARTY_LICENSES.html").exists()
     assert (appdir / "usr" / "lib" / "clap" / "nd-matrix-1.clap").exists()
     assert (
         appdir
@@ -124,6 +135,7 @@ def test_stage_macos_dmg_and_app_bundle(tmp_path):
     assert (dmg_stage / "nd-matrix-1.clap" / "Contents" / "MacOS" / "nd-matrix-1").exists()
     assert (dmg_stage / "ns4").exists()
     assert (dmg_stage / "LICENSE-PLUGIN").exists()
+    assert (dmg_stage / "THIRD_PARTY_LICENSES.html").exists()
 
 
 def test_stage_macos_pkg_roots_and_distribution_xml(tmp_path):
@@ -134,6 +146,12 @@ def test_stage_macos_pkg_roots_and_distribution_xml(tmp_path):
         paths["app_root"] / "Applications" / "ND Matrix 1.app" / "Contents" / "Info.plist"
     ).exists()
     assert (paths["app_root"] / "usr" / "local" / "bin" / "ns4").exists()
+    app_doc = paths["app_root"] / "usr" / "local" / "share" / "doc" / "nd-matrix-1"
+    assert (app_doc / "THIRD_PARTY_LICENSES.html").exists()
+    assert (app_doc / "LICENSE").exists()
+    assert (paths["resources"] / "THIRD_PARTY_LICENSES.html").read_text(
+        encoding="utf-8"
+    ) == NOTICES_OK
     assert (
         paths["vst3_root"]
         / "Library"

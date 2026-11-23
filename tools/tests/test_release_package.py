@@ -10,12 +10,20 @@ LIN = rp.PLATFORMS["x86_64-unknown-linux-gnu"]
 MAC = rp.PLATFORMS["aarch64-apple-darwin"]
 
 
+NOTICES_OK = (
+    "<html><body><h1>Third-party licenses</h1>"
+    + "<pre>MIT License\nApache License\n</pre>" * 40
+    + "</body></html>"
+)
+
+
 def make_tree(tmp_path, platform):
     """Synthetic repo + target dir with every file `collect` expects, plus stray junk."""
     root = tmp_path / "repo"
     (root / "docs").mkdir(parents=True)
     (root / "docs" / "RELEASE_README.txt").write_text("readme")
     (root / "docs" / "HOST_COMPATIBILITY.md").write_text("compat")
+    (root / rp.THIRD_PARTY_NOTICES).write_text(NOTICES_OK, encoding="utf-8")
     (root / "Cargo.toml").write_text(
         '[workspace]\nmembers = []\n\n[workspace.package]\nversion = "1.2.3"\n'
     )
@@ -90,6 +98,35 @@ def test_collect_includes_license_when_present(tmp_path):
     root = make_tree(tmp_path, LIN)
     (root / "LICENSE-MIT").write_text("mit")
     assert "LICENSE-MIT" in {rel for _, rel in rp.collect(LIN, root)}
+
+
+def test_collect_includes_third_party_notices(tmp_path):
+    root = make_tree(tmp_path, LIN)
+    items = {rel: src for src, rel in rp.collect(LIN, root)}
+    assert items["THIRD_PARTY_LICENSES.html"] == root / "THIRD_PARTY_LICENSES.html"
+
+
+def test_collect_missing_third_party_notices_names_the_command(tmp_path):
+    root = make_tree(tmp_path, LIN)
+    (root / rp.THIRD_PARTY_NOTICES).unlink()
+    with pytest.raises(FileNotFoundError, match="cargo about generate"):
+        rp.collect(LIN, root)
+
+
+def test_package_archives_ship_notices_next_to_license(tmp_path):
+    for platform in (LIN, WIN, MAC):
+        root = make_tree(tmp_path / platform.name, platform)
+        (root / "LICENSE").write_text("PolyForm", encoding="utf-8")
+        archive = rp.package(platform.triple, "v1.2.3", tmp_path / platform.name / "out", root)
+        if archive.suffix == ".zip":
+            with zipfile.ZipFile(archive) as zf:
+                names = zf.namelist()
+        else:
+            with tarfile.open(archive, "r:gz") as tf:
+                names = tf.getnames()
+        top = archive.name.removesuffix(".zip").removesuffix(".tar.gz")
+        assert f"{top}/LICENSE" in names
+        assert f"{top}/THIRD_PARTY_LICENSES.html" in names
 
 
 def test_write_sha256_is_lf_and_sha256sum_format(tmp_path):

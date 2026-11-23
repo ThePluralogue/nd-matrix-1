@@ -40,3 +40,6 @@ Thumbs.db
 *.ns4b
 *_sram.bin
 *_code.bin
+
+# Generated at release time by `cargo about generate` (D237); never committed
+THIRD_PARTY_LICENSES.html

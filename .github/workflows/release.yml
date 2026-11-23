@@ -23,6 +23,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pinned: output format and license detection change between cargo-about releases (D237).
+  CARGO_ABOUT_VERSION: '0.8.4'
+
 # Never cancel a release in flight; two runs for one tag queue instead.
 concurrency:
   group: release-${{ inputs.tag || github.ref }}
@@ -126,6 +130,30 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+
+      - name: Cache cargo-about
+        id: cargo-about
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-about
+            ~/.cargo/bin/cargo-about.exe
+          key: cargo-about-${{ env.CARGO_ABOUT_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-about
+        if: steps.cargo-about.outputs.cache-hit != 'true'
+        shell: bash
+        run: cargo install --locked "cargo-about@${CARGO_ABOUT_VERSION}"
+
+      # Fails the release when any crate has a license outside about.toml `accepted`.
+      # Covers all three target OSes (about.toml `targets`), so every job writes the same file.
+      - name: Generate THIRD_PARTY_LICENSES.html (third-party license notices)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo about generate --locked --fail --workspace --all-features \
+            -c about.toml about.hbs -o THIRD_PARTY_LICENSES.html
+          test -s THIRD_PARTY_LICENSES.html
 
       - name: Install Linux system dependencies (ALSA, JACK, X11/GL)
         if: runner.os == 'Linux'

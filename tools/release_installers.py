@@ -20,10 +20,12 @@ import sys
 from pathlib import Path
 
 from release_package import (
+    DOC_FILES,
     LEGACY_PLUGIN_STEM,
     PLATFORMS,
     PLUGIN_STEM,
     ROOT,
+    THIRD_PARTY_NOTICES,
     Platform,
     collect,
     write_sha256,
@@ -226,6 +228,7 @@ def render_inno_iss(
         f'Source: "{src}\\ns4.exe"; DestDir: "{{app}}"; Components: cli; Flags: ignoreversion',
         f'Source: "{src}\\README.txt"; DestDir: "{{app}}"; Flags: ignoreversion',
         f'Source: "{src}\\HOST_COMPATIBILITY.md"; DestDir: "{{app}}"; Flags: ignoreversion',
+        f'Source: "{src}\\{THIRD_PARTY_NOTICES}"; DestDir: "{{app}}"; Flags: ignoreversion',
         (
             f'Source: "{src}\\LICENSE*"; DestDir: "{{app}}"; '
             "Flags: ignoreversion skipifsourcedoesntexist"
@@ -399,7 +402,7 @@ def stage_linux_deb(
         pkg_root / "usr" / "share" / "icons" / "hicolor" / "scalable" / "apps" / "nd-matrix-1.svg"
     ).write_text(APP_SVG_ICON, encoding="utf-8", newline="\n")
 
-    for doc in ("README.txt", "HOST_COMPATIBILITY.md"):
+    for doc in DOC_FILES:
         shutil.copy2(raw_stage / doc, doc_dir / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, doc_dir / lic.name)
@@ -464,7 +467,7 @@ def stage_linux_appdir(
     shutil.copytree(raw_stage / f"{PLUGIN_STEM}.vst3", vst3_dst)
     (vst3_dst / platform.vst3_binary).chmod(0o755)
 
-    for doc in ("README.txt", "HOST_COMPATIBILITY.md"):
+    for doc in DOC_FILES:
         shutil.copy2(raw_stage / doc, doc_dir / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, doc_dir / lic.name)
@@ -559,7 +562,7 @@ def stage_macos_dmg(
         dst = dmg_stage / b
         shutil.copy2(raw_stage / b, dst)
         dst.chmod(0o755)
-    for doc in ("README.txt", "HOST_COMPATIBILITY.md"):
+    for doc in DOC_FILES:
         shutil.copy2(raw_stage / doc, dmg_stage / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, dmg_stage / lic.name)
@@ -637,7 +640,7 @@ def stage_macos_pkg_roots(
         dst = app_root / "usr" / "local" / "bin" / b
         shutil.copy2(raw_stage / b, dst)
         dst.chmod(0o755)
-    for doc in ("README.txt", "HOST_COMPATIBILITY.md"):
+    for doc in DOC_FILES:
         shutil.copy2(raw_stage / doc, doc_dir / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, doc_dir / lic.name)
@@ -669,6 +672,7 @@ def stage_macos_pkg_roots(
     resources = pkg_work / "resources"
     resources.mkdir(parents=True)
     shutil.copy2(raw_stage / "README.txt", resources / "README.txt")
+    shutil.copy2(raw_stage / THIRD_PARTY_NOTICES, resources / THIRD_PARTY_NOTICES)
     write_macos_license(raw_stage, resources)
 
     dist_xml = pkg_work / "distribution.xml"
