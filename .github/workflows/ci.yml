@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      CARGO_ABOUT_VERSION: '0.8.4' # keep equal to release.yml (D237)
+      CARGO_ABOUT_VERSION: '0.8.4' # keep equal to release.yml (D238)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

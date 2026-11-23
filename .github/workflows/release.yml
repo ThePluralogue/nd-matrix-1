@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 env:
-  # Pinned: output format and license detection change between cargo-about releases (D237).
+  # Pinned: output format and license detection change between cargo-about releases (D238).
   CARGO_ABOUT_VERSION: '0.8.4'
 
 # Never cancel a release in flight; two runs for one tag queue instead.

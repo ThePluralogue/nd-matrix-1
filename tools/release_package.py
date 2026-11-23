@@ -39,7 +39,7 @@ PLUGIN_STEM = "nd-matrix-1"
 LEGACY_PLUGIN_STEM = "nord-plugin"
 README_SRC = Path("docs/RELEASE_README.txt")
 EXTRA_DOCS = (("docs/HOST_COMPATIBILITY.md", "HOST_COMPATIBILITY.md"),)
-# Third-party license notices for every crate in the binaries (D237). Generated at release time
+# Third-party license notices for every crate in the binaries (D238). Generated at release time
 # by `cargo about generate` (see docs/RELEASING.md); never committed. Shipped next to LICENSE.
 THIRD_PARTY_NOTICES = "THIRD_PARTY_LICENSES.html"
 # Documentation files every installer layout places beside the license (README.txt is staged

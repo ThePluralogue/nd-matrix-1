@@ -1,4 +1,4 @@
-# cargo-about configuration (D237). Generates THIRD_PARTY_LICENSES.html for releases:
+# cargo-about configuration (D238). Generates THIRD_PARTY_LICENSES.html for releases:
 #   cargo about generate --workspace --all-features -c about.toml about.hbs -o THIRD_PARTY_LICENSES.html
 # CI (`licenses` job, .github/workflows/ci.yml) runs the same command and fails when a
 # crate carries a license that is not in `accepted`. Add an SPDX id here only after

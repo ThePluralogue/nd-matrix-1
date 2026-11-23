@@ -11,7 +11,7 @@ Checks, with no third-party dependencies and no need for `dumpbin`/`nm`:
    in the VST3 module. PE files (Windows) get a real export-table parse; ELF and
    Mach-O modules are checked by symbol-name search in the file image.
 4. `<archive>.sha256` matches the archive and uses LF line endings.
-5. `THIRD_PARTY_LICENSES.html` is present and is a real notices listing (D237).
+5. `THIRD_PARTY_LICENSES.html` is present and is a real notices listing (D238).
 
 Usage: python tools/release_verify.py <archive> [--target <rust triple>]
 Exit status 0 when clean, 1 with one problem per line on stderr otherwise.
@@ -210,7 +210,7 @@ def check_content(files: dict[str, bytes], platform: Platform) -> list[str]:
 
 
 def check_notices(data: bytes | None) -> list[str]:
-    """The third-party notices must be a real `cargo about` listing, not a stub (D237).
+    """The third-party notices must be a real `cargo about` listing, not a stub (D238).
 
     A missing file is reported by `check_layout`; here an empty or truncated file, or one
     without the license texts that every release binary needs, fails the release.
