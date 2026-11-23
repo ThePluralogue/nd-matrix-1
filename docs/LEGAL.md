@@ -26,6 +26,25 @@ The engine is written from measurements and closed-form equations. Scope and non
 
 None of these are committed. [D20](DECISIONS.md#d20-derived-values-only-no-firmware-bytes-in-the-repository) allows only derived values (addresses, field widths, small integers, closed-form equations, our own measurements). [D128](DECISIONS.md#d128-raw-firmware-artifacts-are-never-tracked-derived-data-is-classified-a-to-d-b-and-c-move-to-runtime-loading) forbids tracking raw artifacts (class A) and classifies every derived file A to D in [firmware-derived-data-inventory](research/firmware-derived-data-inventory.md). `.gitignore` blocks the installer and backup names. The app takes the user's own OS update file as input, see [os-update-input](research/os-update-input.md).
 
+### Updater terms check (v1.66)
+
+On 2026-11-23 `Update Nord Stage 4 OS v1.66.zip` was downloaded from the vendor's public download link (document id 1042 in `tools/nord_os_urls.py`, which redirects to the vendor's asset host) into git-ignored `.reference/`. `ns4 firmware info` confirmed the container: 4,037,080 bytes, fnv1a64 `5fd75f195e3671be`, 46 WAVE tables (matches [os-update-input](research/os-update-input.md)).
+
+A text search of the `.exe` inside it found no end-user licence agreement and no reverse-engineering or decompilation restriction:
+
+```bash
+F=".reference/os166/Update Nord Stage 4 OS v1.66.exe"
+for o in -a -el; do strings $o "$F" | grep -iE "license agreement|reverse engineer|decompil|disassembl|all rights reserved"; done
+```
+
+The only match is the Microsoft C runtime line "Copyright (c) by P.J. Plauger, licensed by Dinkumware, Ltd. ALL RIGHTS RESERVED." It is not a Nord term.
+
+Limits:
+
+- Only the v1.66 `.exe` was checked. The `.dmg` and other OS versions were not.
+- The vendor website's terms of use and the download page were not checked.
+- A string search cannot prove the absence of terms shown at runtime (for example in an installer dialog built from resources `strings` does not decode) or on the web.
+
 ## 3. No circumvention
 
 The evidence in this repository is that the firmware is not protected by encryption:
@@ -75,13 +94,18 @@ We respond promptly. A module, table or file that is the subject of a good-faith
 
 These are questions, not conclusions.
 
-1. Does the vendor's OS updater licence (EULA) contain terms on reverse engineering, decompilation or use of the update file, and if so, how do they interact with the interoperability and research purposes above?
+1. Does the vendor's OS updater licence (EULA) contain terms on reverse engineering, decompilation or use of the update file, and if so, how do they interact with the interoperability and research purposes above? Finding so far: a string search of the v1.66 `.exe` found no EULA and no such restriction (section 2); the vendor website's terms of use, the download page, the `.dmg` and other versions were not checked.
 2. In the US, does 17 USC 1201(f) (reverse engineering for interoperability) cover this work, given that no technical protection measure is circumvented (section 3), and what does it say about publishing derived tables?
 3. In the EU, does Art. 6 of the Software Directive 2009/24/EC (decompilation for interoperability) apply, and what limits does it put on publishing what is learned?
 4. Which jurisdiction's rules apply to a project whose contributors and users are in several countries?
 5. Commit `8a3f060` removed `helper.exe` (the vendor's USB driver installer), `sram.bin` and `sram.asm` from the tree, but they remain in git history, as do the two product photos `panel_texture.jpg` and `keyboard_full.jpg` (first tracked in or before commit `f821f0d7`, removed from the tree in the "remove vendor photos" change, section 4). Is history rewriting needed, and is that decision (left to the owner in D128) enough?
 6. Are class B and C derived tables (section 4) copyrightable expression or unprotectable facts, and does moving them to runtime loading fully resolve the concern?
 7. Does the PolyForm Noncommercial licence of this repository interact with any of the above?
+8. Do any vendor or third-party patents cover features we emulate (organ, piano, synth or effect algorithms, file formats), and does interoperability or research use give any defence? No patent search has been done.
+
+## 9. Patents and the project licence
+
+The PolyForm Noncommercial 1.0.0 licence ([LICENSE](../LICENSE)) contains a Patent License and a Patent Defense clause. The Patent License grants users the licensor's own patent claims that they would infringe by using the software. The Patent Defense clause ends that grant if a user claims in writing that the software infringes a patent. Neither covers anyone else's patents: the licence cannot grant rights in a vendor's or third party's patents, and it gives no defence against them. The licensor knows of no patents of its own that read on the software. No patent search has been done (section 8, question 8).
 
 ## Implications
 
