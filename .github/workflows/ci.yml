@@ -114,6 +114,38 @@ jobs:
       - name: nord-plugin dependency licenses (D233)
         run: python3 tools/check_licenses.py
 
+  third-party-notices:
+    name: Third-party license notices are complete (cargo-about)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CARGO_ABOUT_VERSION: '0.8.4' # keep equal to release.yml (D238)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo-about
+        id: cargo-about
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-about
+          key: cargo-about-${{ env.CARGO_ABOUT_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-about
+        if: steps.cargo-about.outputs.cache-hit != 'true'
+        run: cargo install --locked "cargo-about@${CARGO_ABOUT_VERSION}"
+
+      # Fails when a crate carries a license that about.toml does not list in `accepted`,
+      # or when a license text cannot be found, so the release notices stay complete.
+      - name: cargo about generate (all workspace crates, all three target OSes)
+        run: |
+          cargo about generate --locked --fail --workspace --all-features \
+            -c about.toml about.hbs -o THIRD_PARTY_LICENSES.html
+          test -s THIRD_PARTY_LICENSES.html
+
   dco:
     name: DCO sign-off on PR commits
     if: github.event_name == 'pull_request'

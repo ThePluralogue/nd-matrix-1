@@ -11,7 +11,7 @@ Archive layout (one top-level folder, so extraction never litters the cwd):
     nd-matrix-1-<tag>-<platform>/
         ns4[.exe]  nd-matrix-1[.exe]  nord-plugin-standalone[.exe]
         nd-matrix-1.clap  nd-matrix-1.vst3/
-        README.txt  HOST_COMPATIBILITY.md  [LICENSE*]
+        README.txt  HOST_COMPATIBILITY.md  THIRD_PARTY_LICENSES.html  [LICENSE*]
 
 Verify a built archive with `tools/release_verify.py`.
 """
@@ -39,6 +39,12 @@ PLUGIN_STEM = "nd-matrix-1"
 LEGACY_PLUGIN_STEM = "nord-plugin"
 README_SRC = Path("docs/RELEASE_README.txt")
 EXTRA_DOCS = (("docs/HOST_COMPATIBILITY.md", "HOST_COMPATIBILITY.md"),)
+# Third-party license notices for every crate in the binaries (D238). Generated at release time
+# by `cargo about generate` (see docs/RELEASING.md); never committed. Shipped next to LICENSE.
+THIRD_PARTY_NOTICES = "THIRD_PARTY_LICENSES.html"
+# Documentation files every installer layout places beside the license (README.txt is staged
+# from README_SRC, the others from EXTRA_DOCS and THIRD_PARTY_NOTICES).
+DOC_FILES = ("README.txt", "HOST_COMPATIBILITY.md", THIRD_PARTY_NOTICES)
 TAG_RE = re.compile(r"^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$")
 
 
@@ -107,6 +113,17 @@ def _walk_files(path: Path) -> list[Path]:
     return sorted(p for p in path.rglob("*") if p.is_file())
 
 
+def _need_notices(root: Path) -> Path:
+    """Path of the generated notices file, or an error that says how to produce it."""
+    path = root / THIRD_PARTY_NOTICES
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"missing {path}: generate it with `cargo about generate --workspace --all-features "
+            f"about.hbs -o {THIRD_PARTY_NOTICES}` (docs/RELEASING.md)"
+        )
+    return path
+
+
 def collect(
     platform: Platform, root: Path, target_dir: Path | None = None
 ) -> list[tuple[Path, str]]:
@@ -135,6 +152,7 @@ def collect(
     items.append((need(root / README_SRC), "README.txt"))
     for src, dest in EXTRA_DOCS:
         items.append((need(root / src), dest))
+    items.append((_need_notices(root), THIRD_PARTY_NOTICES))
     for lic in sorted(root.glob("LICENSE*")):
         if lic.is_file():
             items.append((lic, lic.name))
