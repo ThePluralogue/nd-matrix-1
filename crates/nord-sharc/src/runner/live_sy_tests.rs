@@ -225,7 +225,11 @@ fn a_bus_side_file_gets_the_bus_frames_while_the_ring_tap_goes_on() {
     assert!(m.pass(&mut c).1);
     let side = std::fs::read(&path).unwrap();
     let _ = std::fs::remove_file(&path);
-    assert_eq!(side.len(), 16, "two interrupts, one L R frame of 8 bytes each");
+    assert_eq!(
+        side.len(),
+        16,
+        "two interrupts, one L R frame of 8 bytes each"
+    );
     assert_eq!(f32::from_le_bytes(side[0..4].try_into().unwrap()), 1.0);
     let ring: Vec<f32> = m.level_words().into_iter().map(f32::from_bits).collect();
     assert_eq!(ring[0], 0.5, "the ring tap is unchanged");

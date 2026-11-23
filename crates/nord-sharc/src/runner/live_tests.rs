@@ -103,7 +103,10 @@ fn the_b_command_needs_a_sample_chip_and_names_its_tap() {
     );
     assert!(p.exists(), "the side file is created");
     let _ = std::fs::remove_file(&p);
-    assert!(l.handle("B 0x9405A i /no/such/dir/x").unwrap().starts_with("ERR"));
+    assert!(l
+        .handle("B 0x9405A i /no/such/dir/x")
+        .unwrap()
+        .starts_with("ERR"));
     assert_eq!(l.exec("B 0").unwrap(), Some("B off".to_string()));
     assert!(l.handle("B 5 q").unwrap().starts_with("ERR"));
     assert!(l.handle("B").unwrap().starts_with("ERR"));

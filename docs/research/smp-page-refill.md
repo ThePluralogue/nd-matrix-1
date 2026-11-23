@@ -25,7 +25,7 @@ Check: every descriptor seen in 4 runs (3 stereo files, 1 mono file) matches a s
 
 ## 3. The feed
 
-`crates/nord-sharc/src/core/periph/smpflash.rs` serves banks 1 to 3 (core accesses and DMA chain reads), `runner/live_flash.rs` implements the protocol lines `L PATH` (load), `F REC11` (place and write the directory), `E` (report, `flash_b1`, `flash_b3`, `flash_outside`), `C PATH` (capture the tapped f32 frames), `H 0|1` (ring half). `tools/arm_smp_flash.py` watches the SMP messages, recognises the descriptor, and sends `F`. `arm_dsp_live.py --piano-bind BACKUP` attaches it and writes `smp_flash` into the result.
+`crates/nord-sharc/src/core/periph/smpflash.rs` serves banks 1 to 3 (core accesses and DMA chain reads), `runner/live_flash.rs` implements the protocol lines `L PATH` (load), `F REC11` (place and write the directory), `E` (report, `flash_b1`, `flash_b3`, `flash_outside`), `C PATH` (capture the tapped f32 frames), `H 0|1` (ring half), `B ADDR [i|f [PATH]]` (bus tap, D233, [smp-bus-tap](smp-bus-tap.md)). `tools/arm_smp_flash.py` watches the SMP messages, recognises the descriptor, and sends `F`. `arm_dsp_live.py --piano-bind BACKUP` attaches it and writes `smp_flash` into the result.
 
 ## 4. Why the tap was silent: the harness replayed the command FIFO (D199)
 

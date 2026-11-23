@@ -14,7 +14,7 @@
 | Record trajectory | The oracle record `0x93CBE` (read after each pass, one update per pass): `F15 = 0x3F7FC1C8` and `F0 = F1 = 0x1BF931EC` (0.2186 of full scale) at update 5, `F0 = 0x1A07C6A3` at update 384. The Rust `SlewRecord` started with `initial_record(F15, F17)` equals the oracle in `F15` (bit exact) and `F0` (within 1 LSB, the documented multiplier ties) at 6 of 6 sampled updates (`slew_voice::tests::key_up_record_equals_the_oracle_trajectory`) | VERIFIED (run) |
 | Time constant | `2 / F / -ln F17 = 0.2426 s` at the DSP frame rate `F` (D211); native default 1.15 s | VERIFIED (arithmetic on the verified record) |
 | Level against the note | Firmware gain of a record is `0.21875 * F15`: key-up `0.21875 * 1.0` (`0.922` at velocity 127), note `0.21875 * level` (Astoria Grand, default key velocity: `0.4719`, word `0x3EF1A1C0`). The key-up sample is `1 / level` times the note in the same units; native default plays `0.30 * level` (soft release 0.45). For Astoria Grand that is +6.5 dB firmware against -10.5 dB native: **17.0 dB** | VERIFIED (words) for the firmware, native constants ASSUMED |
-| Release voice in the SMP tap | **Not measured.** The harness tap (`smp_tap.f32`) is silent from about frame 3,800 on in this run (held note, 8,000 ticks) although voices 0 and 1 keep decoding (counter 12,036 at pass 8399) and the record gain `F0` is 0.2186 at the key-up. A tap captured from pass 8088 on (`C` command) stays silent for 1,224 frames, so the level of the release in the tap is open | open |
+| Release voice in the SMP tap | **Read in the SMP bus (D233, [smp-bus-tap](smp-bus-tap.md) s5): +6.9 dB RMS over the held note at key-up, peak -14.9 dBFS; the ring tap itself goes silent because the post stage gate closes.** Original note (D226): **not measured.** The harness tap (`smp_tap.f32`) is silent from about frame 3,800 on in this run (held note, 8,000 ticks) although voices 0 and 1 keep decoding (counter 12,036 at pass 8399) and the record gain `F0` is 0.2186 at the key-up. A tap captured from pass 8088 on (`C` command) stays silent for 1,224 frames, so the level of the release in the tap is open | open |
 
 ## 2. Native against the firmware law, five programs
 
@@ -52,5 +52,5 @@ target/release/ns4 render-patch "Program/Bank A/Astoria Grand.ns4p" --backup "$B
 ## Follow-ups
 
 1. Hardware clip of an isolated note-off and a listening check of `--piano-keyup-fw` before any flip.
-2. Silent tap after frame 3,800 in the live harness.
+2. Silent tap after frame 3,800 in the live harness: answered in D233 (the ring gate closes after ~2,300 frames; the bus keeps the note and the release). Open: what closes the gate.
 3. `F15` between velocity 100 and 127.
