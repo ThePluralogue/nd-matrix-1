@@ -17,7 +17,7 @@ Tags follow `.agents/rules/provenance-in-code.md`.
 | `--synth-osc-env-morph` (D206 / D213 / D217) | VERIFIED dispatch 27 of 27, DSP word, pitch law 46 rows | key velocity scaling ASSUMED; layers B / C open; no listening A/B of the three programs that move | none | **KEEP OPT-IN** (needs owner listening and hardware) |
 | `--firmware-piano-timbre` (D209) | VERIFIED 108 of 108 gain words | classes 2 / 3 family map EMPIRICAL; Clav rocker modes open; octave shift and flag `0xC059868C + 0x904` ASSUMED | none | **KEEP OPT-IN** (needs hardware clip of Soft / Mid / Bright) |
 | `--fx-compressor-first` (D215) | one clip, EMPIRICAL position | position contradicts the ASSUMED D173 position | one clip (A:25) | **KEEP OPT-IN** (needs a second compressor-on clip) |
-| `lp24` FX port (D193) | VERIFIED routine and type 9 words, 24 call golden under 1e-5 | Mid mapping, Mid Freq index, rate scale ASSUMED | none | **KEEP OPT-IN** (needs an LP24 / HP24 clip) |
+| `lp24` FX port (D193, D234) | VERIFIED routine and type 9 words, 24 call golden under 1e-5; (D234) Mid and Mid Freq mappings recalled by the firmware for 26 of 26 programs, response equal to the oracle at 54 Mid settings (0.0018 dB); Hz-only index defect fixed | rate scale ASSUMED | none | **KEEP OPT-IN** (mapping closed; needs the owner's OK without a clip, or an LP24 / HP24 clip for the rate scale; flip proposal in [fx-lp24-mid-mapping](fx-lp24-mid-mapping.md)) |
 | `--organ-level chain` (D189) | VERIFIED words | `K = 2.8` EMPIRICAL | [firmware-flag-audit](firmware-flag-audit.md): organ scores worse than legacy | **KEEP OPT-IN** |
 
 Not touched (no flip evidence, per the brief): Mod 2, unison and per-type gain, `--synth-filter-gain` (D201), the FX default words of D203 (the delay start state is ASSUMED, `reverb_mix` excluded), the reverb ports (owner veto).
@@ -50,6 +50,6 @@ Final build, default against `--legacy-synth-resonance`, same 17 segments ([defa
 
 ## 5. Follow-ups
 
-- Find the ASSUMED link of the envelope law: oracle trace of the voice level that multiplies the filter envelope amount (D207 open: key tracking word `w38`, layers B / C strips, running LFO scale).
+- Done in D236 ([synth-env-level-link](synth-env-level-link.md)): the level link is VERIFIED; the regression is the fitted row and type cutoff factors. Open: pad source gap. Original item: find the ASSUMED link of the envelope law: oracle trace of the voice level that multiplies the filter envelope amount (D207 open: key tracking word `w38`, layers B / C strips, running LFO scale).
 - Re-measure the pass period (D212 follow-up: invert the settled table in `strip_map.rs`) and re-score the settled tables.
 - Split the attack velocity scaling (VERIFIED) out of `--synth-fw-adr-law` so it can flip without the audible sustain.

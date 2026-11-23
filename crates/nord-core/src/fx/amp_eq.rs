@@ -44,8 +44,8 @@ impl LayerFxChain {
             self.fw_lp24 = None;
             return false;
         }
-        let freq = fw_eq::freq_index_of_hz(self.eq_mid_freq_hz);
-        let mid = (self.eq_filter_res / 10.0).clamp(0.0, 1.0) * 120.0 - 60.0;
+        let freq = fw_eq::freq_index(self.eq_mid_freq_hz, self.eq_mid_freq_index);
+        let mid = fw_lp24::mid_counts_of_res(self.eq_filter_res);
         match &mut self.fw_lp24 {
             Some(st) if st.mode() == mode => st.set(freq, mid, false),
             slot => *slot = Some(fw_lp24::FwLp24::new(mode, freq, mid)),
