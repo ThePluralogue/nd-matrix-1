@@ -7,14 +7,13 @@ use super::*;
 impl SynthLayer {
     /// Advances the arpeggiator engine and generates notes when active.
     pub(super) fn tick_arpeggiator(&mut self, inv_fs: f32) {
-        let amp_gate = self.arp_mode == ArpMode::Gate && !self.gate_retriggers();
-        if !amp_gate {
+        if self.arp_mode != ArpMode::Gate {
             self.perf.gate_level = 1.0;
         }
         if self.arp_mode == ArpMode::Off {
             return;
         }
-        if amp_gate {
+        if self.arp_mode == ArpMode::Gate {
             self.tick_gate(inv_fs);
             return;
         }
@@ -61,7 +60,7 @@ impl SynthLayer {
                 return;
             }
 
-            if matches!(self.arp_mode, ArpMode::Poly | ArpMode::Gate) {
+            if self.arp_mode == ArpMode::Poly {
                 for (slot, &note) in held_list
                     .iter()
                     .take(count.min(MAX_SYNTH_VOICES))
@@ -338,42 +337,6 @@ mod tests {
         // ARM capture: single key 60 plays 72 84 72 60 72 84 72 60 (cycle 60 72 84 72).
         let seq = picked_notes(&mut updown_layer(&[60], true), 8);
         assert_eq!(seq[..8], [60, 72, 84, 72, 60, 72, 84, 72]);
-    }
-
-    /// Rising edges of "a voice has its gate open" and the length of the first open run, for a
-    /// held chord in Gate mode at 120 BPM (250 ms = 12,000 frame steps).
-    fn gate_mode_edges(firmware: bool) -> (usize, usize) {
-        let mut synth = SynthLayer::new(48_000.0);
-        synth.arp_firmware_walk = firmware;
-        synth.arp_mode = ArpMode::Gate;
-        synth.arp_rate_bpm = 120.0;
-        synth.note_on(60, 100);
-        synth.note_on(64, 100);
-        let trace: Vec<bool> = (0..60_000)
-            .map(|_| {
-                synth.render_frame();
-                synth.voices.iter().any(|v| v.active && v.gate)
-            })
-            .collect();
-        let rises = trace.windows(2).filter(|w| !w[0] && w[1]).count();
-        let on = trace.iter().position(|&g| g).unwrap_or(0);
-        let run = trace[on..].iter().position(|&g| !g).unwrap_or(usize::MAX);
-        (rises, run)
-    }
-
-    #[test]
-    fn gate_mode_retriggers_the_chord_every_step_with_the_two_thirds_gate() {
-        // ARM replay of A:17 Dual Gates: note-on every step, gate 2/3 of it (100 of 150 ms).
-        let (rises, run) = gate_mode_edges(true);
-        assert!(rises >= 3, "retriggers: {rises}");
-        assert!(run.abs_diff(8_000) <= 2, "gate {run} frames, want 8000");
-    }
-
-    #[test]
-    fn legacy_gate_mode_holds_the_chord_without_retriggering() {
-        let (rises, run) = gate_mode_edges(false);
-        assert_eq!(rises, 0, "the legacy gate never retriggers");
-        assert_eq!(run, usize::MAX, "voices stay gated");
     }
 
     #[test]

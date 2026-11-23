@@ -10,8 +10,6 @@ fn layer() -> SynthLayer {
     s.attack_sec = 0.001;
     s.sustain_level = 1.0;
     s.release_sec = 0.05;
-    // These tests cover the legacy amplitude gate; the firmware retrigger has its own tests.
-    s.arp_firmware_walk = false;
     s
 }
 

@@ -209,10 +209,7 @@ mod tests {
         arp_run(&mut modb);
         modb.sync_to_engine(&mut e);
         gate.sync_to_engine(&mut e);
-        // A chord: Gate retriggers the whole chord, the arpeggio plays one note per step (a single
-        // key renders the same in both since Gate retriggers like the firmware).
         e.synth_a.note_on(60, 100);
-        e.synth_a.note_on(64, 100);
         (0..16_384).map(|_| e.synth_a.render_frame()).collect()
     }
 
