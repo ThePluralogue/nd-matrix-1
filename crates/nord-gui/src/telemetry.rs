@@ -28,6 +28,12 @@ impl TelemetryHandle {
         Self::default()
     }
 
+    /// A handle reading `cell`, which an engine elsewhere publishes into (the plugin owns the
+    /// engine, so its cell exists before the editor does).
+    pub fn from_cell(cell: Arc<TelemetryCell>) -> Self {
+        Self { cell }
+    }
+
     /// The cell the audio thread publishes into (`Stage4Engine::attach_telemetry`).
     pub fn cell(&self) -> Arc<TelemetryCell> {
         Arc::clone(&self.cell)
@@ -216,6 +222,17 @@ mod tests {
         e.master_clock.bpm = 101.0;
         e.publish_telemetry();
         assert_eq!(h.clone().latest().get().map(|t| t.bpm), Some(101.0));
+    }
+
+    #[test]
+    fn a_handle_built_from_a_cell_reads_what_that_cell_publishes() {
+        let cell = TelemetryHandle::new().cell();
+        let h = TelemetryHandle::from_cell(cell.clone());
+        let mut e = Stage4Engine::new(48_000.0);
+        e.attach_telemetry(cell);
+        e.master_clock.bpm = 93.0;
+        e.publish_telemetry();
+        assert_eq!(h.latest().get().map(|t| t.bpm), Some(93.0));
     }
 
     #[test]

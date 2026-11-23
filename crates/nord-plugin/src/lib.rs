@@ -46,7 +46,7 @@ pub mod wave_tables;
 
 use nih_plug::prelude::*;
 use nord_core::cbin::{CbinError, CbinFile, ProgramDecoded};
-use nord_core::engine::Stage4Engine;
+use nord_core::engine::{Stage4Engine, TelemetryCell};
 use nord_gui::audio::garbage::{spawn_reaper, Bin};
 use params::Stage4Params;
 use std::sync::Arc;
@@ -69,6 +69,9 @@ pub struct NdMatrix1Plugin {
     pub load_tx: loader::LoadSender,
     /// Consumer end, drained at the start of every `process()` block.
     pub load_rx: loader::LoadReceiver,
+    /// Where the engine publishes its state (lit keys, LEDs, ladders) for the editor to read.
+    /// It outlives engine rebuilds: each new engine is attached to the same cell.
+    pub telemetry: Arc<TelemetryCell>,
 }
 
 impl Default for NdMatrix1Plugin {
@@ -78,9 +81,12 @@ impl Default for NdMatrix1Plugin {
         // The params sit at their final address inside the `Arc`: build the hold table now.
         let params = Arc::new(Stage4Params::default());
         params.program_hold.bind(&params);
+        let telemetry = Arc::new(TelemetryCell::default());
+        let mut engine = Stage4Engine::new(44100.0);
+        engine.attach_telemetry(telemetry.clone());
         Self {
             params,
-            engine: Stage4Engine::new(44100.0),
+            engine,
             sample_rate: 44100.0,
             loaded: loader::Loaded::default(),
             bin: Bin::inline(),
@@ -88,6 +94,7 @@ impl Default for NdMatrix1Plugin {
             note_rx,
             load_tx,
             load_rx,
+            telemetry,
         }
     }
 }
@@ -97,6 +104,7 @@ impl NdMatrix1Plugin {
     /// parameters synced on top (D169 / D218: only what the host moved replaces the program).
     fn rebuild_engine(&mut self) {
         self.engine = Stage4Engine::new(self.sample_rate);
+        self.engine.attach_telemetry(self.telemetry.clone());
         self.loaded.restore(&mut self.engine);
         self.params.sync_to_engine(&mut self.engine);
     }
@@ -156,6 +164,7 @@ impl Plugin for NdMatrix1Plugin {
             self.params.clone(),
             self.note_tx.clone(),
             self.load_tx.clone(),
+            self.telemetry.clone(),
         )
     }
 
@@ -250,6 +259,9 @@ impl Plugin for NdMatrix1Plugin {
 
             sample_idx = block_end;
         }
+
+        // One snapshot per block for the editor (lock-free seqlock write, no allocation).
+        self.engine.publish_telemetry();
 
         ProcessStatus::Normal
     }
@@ -365,6 +377,13 @@ mod tests {
         }
         assert!(plugin.note_rx.is_empty(), "process() must drain the queue");
         assert!(peak > 0.0, "queued key press produced no audio");
+        // The editor's lit keys and LEDs read this cell: process() must have published into it.
+        let snap =
+            nord_gui::telemetry::TelemetryHandle::from_cell(plugin.telemetry.clone()).latest();
+        assert!(
+            snap.get().is_some_and(|t| t.note_held(60)),
+            "process() did not publish the held key to the editor"
+        );
     }
 
     /// Host-visible metadata must point at the live repository and carry no manufacturer name.
