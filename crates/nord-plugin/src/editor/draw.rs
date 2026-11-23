@@ -21,6 +21,7 @@ use nih_plug_egui::egui::{
 };
 use nih_plug_egui::resizable_window::paint_resize_corner;
 use nih_plug_egui::EguiState;
+use nord_core::engine::TelemetryCell;
 use nord_gui::audio::{AudioCommand, AudioHandle};
 use nord_gui::debug_dialog::{show_debug_dialog, DebugDialogState, DebugTab};
 use nord_gui::firmware_panel::FirmwarePanelState;
@@ -28,6 +29,7 @@ use nord_gui::library::BackupLibraryState;
 use nord_gui::os_update_panel::OsUpdatePanel;
 use nord_gui::panel::{render_stage4_panel, Stage4PanelState};
 use nord_gui::style::CHASSIS_DARK;
+use nord_gui::telemetry::TelemetryHandle;
 use std::sync::Arc;
 
 /// Baked plate size in pixels (`crates/nord-gui/assets/baked/panel_layout.json` `chassis_px`).
@@ -64,8 +66,15 @@ pub struct EditorState {
 }
 
 impl EditorState {
-    pub fn new(index: Arc<ParamIndex>, notes: NoteSender, loads: LoadSender) -> Self {
-        let (handle, rx) = AudioHandle::new();
+    pub fn new(
+        index: Arc<ParamIndex>,
+        notes: NoteSender,
+        loads: LoadSender,
+        telemetry: Arc<TelemetryCell>,
+    ) -> Self {
+        let (mut handle, rx) = AudioHandle::new();
+        // The plugin's engine publishes into this cell: the panel LEDs and lit keys read it.
+        handle.telemetry = TelemetryHandle::from_cell(telemetry);
         let coverage = super::coverage::classify(&index);
         Self {
             panel: Stage4PanelState {
@@ -173,6 +182,15 @@ fn resize_handle(ctx: &Context, egui_state: &EguiState, avail: Rect) {
         });
 }
 
+/// Lights the keybed keys the engine holds, so host MIDI shows on screen. The standalone sets
+/// these from its MIDI port; the plugin has no port, only the engine's telemetry.
+pub(super) fn light_held_keys(handle: &AudioHandle, panel: &mut Stage4PanelState) {
+    let snap = handle.telemetry().latest();
+    for (note, lit) in panel.midi_active_keys.iter_mut().enumerate() {
+        *lit = snap.get().is_some_and(|t| t.note_held(note as u8));
+    }
+}
+
 /// Draw one frame of the editor and forward the panel's edits to `writer`.
 pub fn draw_editor<W: ParamWriter>(
     ctx: &Context,
@@ -181,6 +199,7 @@ pub fn draw_editor<W: ParamWriter>(
     writer: W,
 ) {
     sync_panel_from_params(&st.index, &mut st.panel);
+    light_held_keys(&st.handle, &mut st.panel);
 
     // The shared panel would otherwise drive egui's zoom itself; the editor shows the whole plate.
     st.panel.view.host_scaled = true;
@@ -238,7 +257,33 @@ mod tests {
         let (tx, rx) = note_queue(64);
         let (load_tx, load_rx) = crate::loader::load_queue(8);
         std::mem::forget(load_rx); // keep the queue connected; these tests do not read it
-        (params, EditorState::new(index, tx, load_tx), rx)
+        (
+            params,
+            EditorState::new(index, tx, load_tx, Default::default()),
+            rx,
+        )
+    }
+
+    #[test]
+    fn keys_the_engine_holds_light_up_in_the_editor() {
+        let cell: Arc<TelemetryCell> = Default::default();
+        let (_params, mut st, _rx) = state();
+        st.handle.telemetry = TelemetryHandle::from_cell(cell.clone());
+        let mut engine = nord_core::engine::Stage4Engine::new(48_000.0);
+        engine.attach_telemetry(cell);
+
+        light_held_keys(&st.handle, &mut st.panel);
+        assert!(!st.panel.midi_active_keys[60], "nothing published yet");
+
+        engine.handle_midi(nord_core::midi::MidiEvent::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 100,
+        });
+        engine.publish_telemetry();
+        light_held_keys(&st.handle, &mut st.panel);
+        assert!(st.panel.midi_active_keys[60]);
+        assert!(!st.panel.midi_active_keys[61]);
     }
 
     fn input(size: Vec2, events: Vec<egui::Event>) -> egui::RawInput {

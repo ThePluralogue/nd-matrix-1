@@ -17,7 +17,10 @@ fn editor() -> (EditorState, LoadReceiver) {
     let index = Arc::new(ParamIndex::new(params.as_ref()).with_program_hold(params));
     let (tx, _notes) = note_queue(8);
     let (load_tx, load_rx) = load_queue(8);
-    (EditorState::new(index, tx, load_tx), load_rx)
+    (
+        EditorState::new(index, tx, load_tx, Default::default()),
+        load_rx,
+    )
 }
 
 fn frame(ctx: &egui::Context, st: &mut EditorState) -> egui::FullOutput {

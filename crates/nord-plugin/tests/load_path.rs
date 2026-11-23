@@ -323,7 +323,12 @@ fn open_ns4b_then_load_a_program_and_it_sounds() {
     let mut plugin = activate();
     let index =
         Arc::new(ParamIndex::new(plugin.params.as_ref()).with_program_hold(plugin.params.clone()));
-    let mut st = EditorState::new(index, plugin.note_tx.clone(), plugin.load_tx.clone());
+    let mut st = EditorState::new(
+        index,
+        plugin.note_tx.clone(),
+        plugin.load_tx.clone(),
+        plugin.telemetry.clone(),
+    );
     let egui_state = EguiState::from_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1);
     let ctx = egui::Context::default();
     let closed = frame(&ctx, &egui_state, &mut st);
@@ -373,7 +378,12 @@ fn open_ns4b_then_load_a_program_and_it_sounds() {
 fn a_load_with_no_audio_thread_running_is_reported_not_lost_silently() {
     let plugin = NdMatrix1Plugin::default();
     let index = Arc::new(ParamIndex::new(plugin.params.as_ref()));
-    let mut st = EditorState::new(index, plugin.note_tx.clone(), plugin.load_tx.clone());
+    let mut st = EditorState::new(
+        index,
+        plugin.note_tx.clone(),
+        plugin.load_tx.clone(),
+        plugin.telemetry.clone(),
+    );
     let egui_state = EguiState::from_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1);
     let ctx = egui::Context::default();
     // Nothing drains the queue (no process()): after its capacity the loads are rejected.

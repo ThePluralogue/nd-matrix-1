@@ -62,6 +62,7 @@ pub fn create(
     params: Arc<Stage4Params>,
     notes: notes::NoteSender,
     loads: crate::loader::LoadSender,
+    telemetry: Arc<nord_core::engine::TelemetryCell>,
 ) -> Option<Box<dyn Editor>> {
     let egui_state = params.editor_state.clone();
     // The index holds raw parameter pointers; the state below keeps `params` alive for as long
@@ -69,7 +70,7 @@ pub fn create(
     // The index also tells the panel which groups a loaded program owns (`program_hold.rs`).
     let index = Arc::new(ParamIndex::new(params.as_ref()).with_program_hold(params.clone()));
     let keep_alive = params;
-    let st = EditorState::new(index, notes, loads);
+    let st = EditorState::new(index, notes, loads, telemetry);
     let size_state = egui_state.clone();
     create_egui_editor(
         egui_state,
@@ -124,6 +125,6 @@ mod tests {
         let params = Arc::new(Stage4Params::default());
         let (tx, _rx) = notes::note_queue(8);
         let (load_tx, _load_rx) = crate::loader::load_queue(4);
-        assert!(create(params, tx, load_tx).is_some());
+        assert!(create(params, tx, load_tx, Default::default()).is_some());
     }
 }
