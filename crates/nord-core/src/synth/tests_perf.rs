@@ -328,3 +328,36 @@ fn defaults_render_like_a_layer_without_the_perf_features() {
     b.note_off(60);
     assert_eq!(render_n(&mut a, 6000), render_n(&mut b, 6000));
 }
+
+#[test]
+fn firmware_gate_mode_pattern_steps_rest_two_thirds_and_full() {
+    // Custom pattern [rest, E, q]: closed, 2/3 open, fully open (`firmware_gate_fraction`).
+    let mut s = layer();
+    s.arp_firmware_gate = true;
+    s.arp_mode = ArpMode::Gate;
+    s.arp_rate_bpm = 480.0; // step = 3000 samples
+    s.perf.gate_env = 1.0;
+    s.perf.pattern_on = true;
+    s.set_pattern_length(3);
+    for (i, g) in [0u8, 4, 8].into_iter().enumerate() {
+        s.set_step_gate(i, g);
+    }
+    s.perf.pattern_custom = true;
+    s.note_on(57, 110);
+    let mut open = [0usize; 3];
+    for i in 0..3000 * 4 {
+        s.render_frame();
+        // Step 0 uses the initial length; steps 1.. walk the pattern from its first entry.
+        let step = i / 3000;
+        if step >= 1 && s.perf.gate_level > 0.5 {
+            open[(step - 1) % 3] += 1;
+        }
+    }
+    assert!(open[0] < 30, "rest step open {} frames", open[0]);
+    assert!(
+        open[1].abs_diff(2000) < 60,
+        "E step open {} frames",
+        open[1]
+    );
+    assert!(open[2] > 2940, "q step open {} frames", open[2]);
+}

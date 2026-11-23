@@ -290,7 +290,7 @@ impl SynthLayer {
             self.perf.cur_len = self.step_len();
         }
         let phase = self.perf.gate_counter / step_sec;
-        // VERIFIED (ARM side): in Gate mode the ARM sends the chord once and writes float 1.0 / 0.0
+        // EMPIRICAL (ARM side, scratch ARM+DSP trace, not yet a committed tool): in Gate mode the ARM sends the chord once and writes float 1.0 / 0.0
         // gate levels (DM 0xC1396.. per layer) that stay open 2/3 of an `E` step (A:17 Dual Gates,
         // 84 ms open of a 125 ms step at 120 BPM; ARM+DSP trace 2026-11-23). Same fractions as the
         // Arp / Poly gate (`arp_firmware_gate`); the legacy gate keeps `eighths / 8`.
