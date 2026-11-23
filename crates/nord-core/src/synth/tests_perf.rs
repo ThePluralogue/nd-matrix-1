@@ -10,7 +10,29 @@ fn layer() -> SynthLayer {
     s.attack_sec = 0.001;
     s.sustain_level = 1.0;
     s.release_sec = 0.05;
+    // These tests cover the legacy half-step gate; the firmware 2/3 duty has its own test.
+    s.arp_firmware_gate = false;
     s
+}
+
+#[test]
+fn firmware_gate_mode_is_open_two_thirds_of_a_step() {
+    // ARM+DSP trace of A:17 Dual Gates: gate float 1.0 for 84 ms of each 125 ms step (0.672).
+    let mut s = layer();
+    s.arp_firmware_gate = true;
+    s.arp_mode = ArpMode::Gate;
+    s.arp_rate_bpm = 480.0; // step = 3000 samples
+    s.perf.gate_env = 1.0;
+    s.note_on(57, 110);
+    let mut open = 0usize;
+    for i in 0..3000 * 8 {
+        s.render_frame();
+        if i >= 3000 && s.perf.gate_level > 0.5 {
+            open += 1;
+        }
+    }
+    let duty = open as f32 / (3000.0 * 7.0);
+    assert!((duty - 2.0 / 3.0).abs() < 0.02, "duty {duty}");
 }
 
 fn window_energy(frames: &[[f32; 2]], from: usize, to: usize) -> f32 {
