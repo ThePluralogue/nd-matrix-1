@@ -195,7 +195,7 @@ To keep every label legible on standard 1080p/1440p/4K monitors and inside DAW p
    | `Z`, `1`-`5`, section header | Focus a section; clears the panorama |
 
    The strip (56 logical px high, panel aspect) sits under the detailed view and draws section outlines only. State is `ViewState::panorama: Option<Rect>` in logical panel px; the default view is unchanged. Not persisted: the app persists no view settings (no eframe storage), so a new session starts in the overview with the drawer closed. The library drawer slides in and out (`SidePanel::show_animated`), `L` toggles it; library logic is unchanged.
-3. **Docked `.ns4b` Archive Browser & Knob Recall Mode:** The `.ns4b` library drawer docks as a resizable left `SidePanel` before the front-panel `CentralPanel` (never overlapping hardware controls), with an `Auto-close` toggle (enabled by default) that dismisses the browser upon selecting a Program, Piano, or Sample so the full top panel remains unobstructed. Several `.ns4b` banks can be open at once ([D231](../DECISIONS.md)): the first is the primary (Organize, Export, Live import), later ones merge into the Programs / Pianos / Samples lists; exact duplicates (same name, CRC-32, size) are skipped and different bytes under a taken name are listed as `<name> [<bank>]`. `Sync Knobs on Preset` defaults to `false` to match authentic non-motorized Nord Stage 4 hardware behavior (where OLEDs, `A:11..H:88` location, LED button rings, `fx_focus`, and layer/drawbar LED meters update while potentiometer caps keep their physical angle).
+3. **Docked `.ns4b` Archive Browser & Knob Recall Mode:** The `.ns4b` library drawer docks as a resizable left `SidePanel` before the front-panel `CentralPanel` (never overlapping hardware controls), with an `Auto-close` toggle (enabled by default) that dismisses the browser upon selecting a Program, Piano, or Sample so the full top panel remains unobstructed. Several `.ns4b` banks can be open at once ([D234](../DECISIONS.md)): the first is the primary (Organize, Export, Live import), later ones merge into the Programs / Pianos / Samples lists; exact duplicates (same name, CRC-32, size) are skipped and different bytes under a taken name are listed as `<name> [<bank>]`. `Sync Knobs on Preset` defaults to `false` to match authentic non-motorized Nord Stage 4 hardware behavior (where OLEDs, `A:11..H:88` location, LED button rings, `fx_focus`, and layer/drawbar LED meters update while potentiometer caps keep their physical angle).
 
 ---
 
@@ -346,6 +346,7 @@ To achieve 1:1 visual parity with the approved `nd matrix 1` HTML/CSS reference 
   - `panel_layout.json`: normalized `(x, y, w, h)` bounding boxes for all annotated `data-control-id` controls, LEDs, OLEDs, and 88 keys.
 - **Runtime Loader & 1:1 View (`crates/nord-gui/src/baked.rs`, `crates/nord-gui/src/panel/baked_view.rs`):**
   - `BakedPanelAssets::get_or_load` uploads the baked atlas and splits `panel_plate_2x.png` into `<= 2048px` horizontal GPU texture tiles so OpenGL contexts with `max_texture_side = 2048` never fail.
+  - No photo texture ships: the former embedded `panel_texture.jpg` (a vendor photo) is removed (D16); all panel pixels come from the baked plate and sprite atlas, and chrome colours from `style.rs` tokens. `tools/check_no_vendor_photos.py` enforces it in CI.
   - `render_baked_panel` renders the tiled plate, interactive `pitch_stick`, `mod_wheel`, rotated knobs, buttons, faders, 9 drawbars, live LEDs, live `main` and `synth` OLEDs, and the 88-key keybed wired to `AudioHandle::send_keyboard_midi`.
   - Controlled by `Stage4PanelState::use_baked_plate` (enabled in the standalone `nd-matrix-1` binary; `false` by default in `Stage4PanelState::default()` so existing procedural layout and legibility tests remain valid).
 
@@ -359,6 +360,9 @@ Our product name is **ND Matrix 1**. "Nord", "Nord Stage 4" and "Clavia" appear 
 | Procedural chassis wordmark | `nd matrix 1` (`branding::CHASSIS_WORDMARK`) | rule |
 | Library drawer heading | `Backup & Sample Library (Nord Stage 4 files)` | descriptive |
 | File dialog filter (backups, sounds) | `Backup and sound files for Nord Stage 4` | descriptive |
-| Plugin name, installers, bundle names, `.desktop` | `ND Matrix 1` | already compliant |
+| Plugin name, installers, `.desktop` | `ND Matrix 1` | already compliant |
+| Shipped plugin bundle files | `nd-matrix-1.clap`, `nd-matrix-1.vst3` (`bundler.toml`; legacy `nord-plugin.*` removed by installers) | rule |
 
 Unchanged on purpose: crate and binary names (`nord-*`), host parameter IDs and CLAP/VST3 ids (saved DAW projects), data matches such as `prog.name == "Nord Stage 4 Program"` (written by the hardware), hardware text mirrored on the OLED (`Nord Sample Library 4`), pedal model names, and official download links. Pinned by tests in `crates/nord-gui/src/branding.rs` and `file_picker.rs`.
+
+"Nord OS update" and "Nord OS update file" stay as labels because they name the vendor's firmware file the user must supply (nominative use), not our product.
