@@ -407,6 +407,9 @@ pub struct FirmwareOptions {
     /// `--synth-fw-adr-law`: `SynthLayer::fw_adr_law` (amp attack scaled by the key velocity, decay
     /// record sustain 0.5, oracle envelope law, D210). Strip chain only.
     pub synth_fw_adr_law: bool,
+    /// `--synth-settled-rates`: `SynthLayer::settled_rates` (the settled envelope rate tables on the
+    /// default strip chain, D212 / D235). Strip chain only.
+    pub synth_settled_rates: bool,
     /// `--synth-osc-env-morph`: `Stage4Engine::synth_osc_env_morph` (the Osc Env Amount morph of
     /// the synth layers is played, firmware law, D206; needs the firmware morph, on by default).
     pub synth_osc_env_morph: bool,
@@ -502,6 +505,7 @@ impl Default for FirmwareOptions {
             synth_filter_gain: false,
             synth_fw_env_law: false,
             synth_fw_adr_law: false,
+            synth_settled_rates: false,
             synth_osc_env_morph: false,
             synth_knob_laws: true,
             synth_wave_bank: false,
@@ -537,6 +541,7 @@ impl FirmwareOptions {
             synth_filter_gain: false,
             synth_fw_env_law: false,
             synth_fw_adr_law: false,
+            synth_settled_rates: false,
             synth_osc_env_morph: false,
             synth_knob_laws: false,
             synth_velocity_fw: false,
@@ -598,6 +603,7 @@ impl FirmwareOptions {
             synth_filter_gain: false,
             synth_fw_env_law: false,
             synth_fw_adr_law: false,
+            synth_settled_rates: false,
             synth_osc_env_morph: false,
             synth_knob_laws: true,
             synth_wave_bank: false,
@@ -648,11 +654,6 @@ impl FirmwareOptions {
         }
         if let Some(v) = value("--farfisa-processor") {
             o.farfisa_processor = Some(parse_on_off("--farfisa-processor", v)?);
-            if o.farfisa_processor == Some(true) {
-                // a named but unusable OS update file is an error, as for the WAVE tables; an unset
-                // variable is not (the stage falls back to the non-firmware model, D22)
-                crate::organ::farfisa_firmware_status()?;
-            }
         }
         if let Some(v) = value("--b3-bass-processor") {
             o.b3_bass_processor = Some(parse_on_off("--b3-bass-processor", v)?);
@@ -736,6 +737,7 @@ impl FirmwareOptions {
         o.synth_unison_weights |= has("--synth-unison-weights");
         o.synth_fw_env_law |= has("--synth-fw-env-law");
         o.synth_fw_adr_law |= has("--synth-fw-adr-law");
+        o.synth_settled_rates |= has("--synth-settled-rates");
         o.synth_osc_env_morph |= has("--synth-osc-env-morph");
         if let Some(v) = value("--synth-unison-gain") {
             let u: f32 = v
@@ -1130,6 +1132,9 @@ impl FirmwareOptions {
         engine.synth_a.fw_adr_law = self.synth_fw_adr_law;
         engine.synth_b.fw_adr_law = self.synth_fw_adr_law;
         engine.synth_c.fw_adr_law = self.synth_fw_adr_law;
+        engine.synth_a.settled_rates = self.synth_settled_rates;
+        engine.synth_b.settled_rates = self.synth_settled_rates;
+        engine.synth_c.settled_rates = self.synth_settled_rates;
         engine.synth_osc_env_morph = self.synth_osc_env_morph;
         engine.synth_b.unison_gain = uni;
         engine.synth_c.unison_gain = uni;
@@ -1169,15 +1174,9 @@ impl FirmwareOptions {
             parts.push(format!("b3-tail={}", if b { "on" } else { "off" }));
         }
         if let Some(b) = self.farfisa_processor {
-            let fallback = b && !matches!(crate::organ::farfisa_firmware_status(), Ok(true));
             parts.push(format!(
-                "farfisa-processor={}{}",
-                if b { "on" } else { "off" },
-                if fallback {
-                    " (no OS update file: non-firmware Farfisa model)"
-                } else {
-                    ""
-                }
+                "farfisa-processor={}",
+                if b { "on" } else { "off" }
             ));
         }
         if let Some(b) = self.b3_bass_processor {
@@ -1304,6 +1303,9 @@ impl FirmwareOptions {
         }
         if self.synth_fw_adr_law {
             parts.push("fw-adr-law".into());
+        }
+        if self.synth_settled_rates {
+            parts.push("settled-rates".into());
         }
         if self.synth_osc_env_morph {
             parts.push("osc-env-morph".into());
@@ -1713,6 +1715,17 @@ mod tests {
         assert!(!e.synth_a.wave_bank);
         o.apply_to(&mut e);
         assert!(e.synth_a.wave_bank && e.synth_b.wave_bank && e.synth_c.wave_bank);
+    }
+
+    #[test]
+    fn settled_rates_flag_reaches_every_synth_layer() {
+        let o = FirmwareOptions::from_args(&["--synth-settled-rates".into()]).unwrap();
+        assert!(o.synth_settled_rates && o.summary().contains("settled-rates"));
+        assert!(!FirmwareOptions::default().synth_settled_rates);
+        assert!(!FirmwareOptions::from_args(&[]).unwrap().synth_settled_rates);
+        let mut e = Stage4Engine::new(48_000.0);
+        o.apply_to(&mut e);
+        assert!(e.synth_a.settled_rates && e.synth_b.settled_rates && e.synth_c.settled_rates);
     }
 
     #[test]
@@ -2149,15 +2162,6 @@ mod tests {
         let o = FirmwareOptions::from_args(&args(&["--farfisa-processor", "on"])).unwrap();
         assert_eq!(o.farfisa_processor, Some(true));
         assert!(o.summary().contains("farfisa-processor=on"));
-        // without an OS update file the summary says which model plays (D22, D128)
-        let loaded = matches!(crate::organ::farfisa_firmware_status(), Ok(true));
-        assert_eq!(o.summary().contains("non-firmware Farfisa model"), !loaded);
-        assert!(
-            !FirmwareOptions::from_args(&args(&["--farfisa-processor", "off"]))
-                .unwrap()
-                .summary()
-                .contains("non-firmware")
-        );
         let mut e = Stage4Engine::new(48_000.0);
         apply_farfisa_processor(&mut e, None);
         assert!(!e.organ_a.farfisa_processor);

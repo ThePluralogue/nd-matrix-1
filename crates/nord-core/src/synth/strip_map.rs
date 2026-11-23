@@ -22,8 +22,8 @@
 //! the same note) and that the panel value of a layer without stored knobs is the display.
 
 use super::{
-    attack_coeff, decay_release_coeff, fw_cutoff_cycles_per_sample, fw_strip_cutoff_r,
-    FW_CUTOFF_CLIP, SY_FRAME_RATE_HZ,
+    fw_cutoff_cycles_per_sample, fw_strip_cutoff_r, RateTables, FW_CUTOFF_CLIP, LEGACY_TABLES,
+    SY_FRAME_RATE_HZ,
 };
 
 /// Ratio of the decay / release time constant to the displayed time.
@@ -38,10 +38,14 @@ use super::{
 /// a flat 0.2171 would break that clip (checked: the `engine` golden segment moves 0.12 % in RMS).
 pub const DECAY_TAU_FRACTION: f32 = 0.18;
 
-/// VERIFIED: SY frames per envelope pass, 2: the attack ramp time `1 / cA(knob - 64)` passes equals
-/// the displayed attack time at the first knob of each plateau, ratio 1.000 to 1.011 at knobs 0,
-/// 16, ..., 112 (`docs/research/synth-knob-laws.md` s3; `synth::fw_knob_laws` test
-/// `rate_tables_...`).
+/// VERIFIED: SY frames per envelope pass, 2.000. With the settled rate tables the displayed
+/// attack time (`1 / b` passes) and the displayed 40 dB decay time (`ln 100 / (1 - a)` passes) of
+/// all 128 knobs give 1.998 / 2.001 frames at the median (range 1.90 .. 2.08, display rounding);
+/// checked by `python tools/synth_pass_period.py check` and the test
+/// `tests_pass_period::settled_tables_fit_two_frames_per_pass_on_every_knob` (D235). Earlier
+/// check, equal at plateau starts only: `docs/research/synth-knob-laws.md` s3. Independent
+/// readout: the oracle oscillator advances `note / (2 F)` per stage sample, 4 samples per pass
+/// (261.59 Hz for note 60, -0.3 cent, `synth-e2e-oracle-vs-native.md`).
 pub const STRIP_PASS_FRAMES: f32 = 2.0;
 
 /// Strip table index of the cutoff word that gives `R = 0.36083` (`i = 0`); the ramp is
@@ -101,28 +105,53 @@ fn nearest_index(target: f32, c: impl Fn(f32) -> f32) -> i32 {
     best.0
 }
 
-/// Rate index of an attack that takes `seconds` to reach full scale (ramp of `1 / cA` passes).
+/// Rate index of an attack that takes `seconds` to reach full scale (ramp of `1 / cA` passes),
+/// searched in the stale default tables ([`LEGACY_TABLES`]).
 pub fn attack_index(seconds: f32) -> i32 {
-    let passes = (seconds.max(0.0) * passes_per_second()).max(1.0);
-    nearest_index(1.0 / passes, attack_coeff)
+    attack_index_with(seconds, LEGACY_TABLES)
 }
 
-/// Rate index of a decay or release with time constant `tau_sec` (`1 - a = 1 / (tau passes)`).
+/// [`attack_index`] in the given rate tables. The settled tables (D212) have no plateaus, so the
+/// search resolves every index; the stale sweep lands on the first index of a plateau.
+pub fn attack_index_with(seconds: f32, tables: RateTables) -> i32 {
+    let passes = (seconds.max(0.0) * passes_per_second()).max(1.0);
+    nearest_index(1.0 / passes, tables.attack)
+}
+
+/// Rate index of a decay or release with time constant `tau_sec` (`1 - a = 1 / (tau passes)`),
+/// searched in the stale default tables.
 pub fn decay_index(tau_sec: f32) -> i32 {
+    decay_index_with(tau_sec, LEGACY_TABLES)
+}
+
+/// [`decay_index`] in the given rate tables.
+pub fn decay_index_with(tau_sec: f32, tables: RateTables) -> i32 {
     let passes = (tau_sec.max(0.0) * passes_per_second()).max(1.0);
-    nearest_index(1.0 / passes, |i| 1.0 - decay_release_coeff(i))
+    nearest_index(1.0 / passes, |i| 1.0 - (tables.decay_release)(i))
 }
 
 /// Seconds to full scale of an attack index (inverse of [`attack_index`] within its step).
 #[inline]
 pub fn attack_seconds(index: i32) -> f32 {
-    1.0 / attack_coeff(index as f32) / passes_per_second()
+    attack_seconds_with(index, LEGACY_TABLES)
+}
+
+/// [`attack_seconds`] in the given rate tables.
+#[inline]
+pub fn attack_seconds_with(index: i32, tables: RateTables) -> f32 {
+    1.0 / (tables.attack)(index as f32) / passes_per_second()
 }
 
 /// Time constant in seconds of a decay / release index.
 #[inline]
 pub fn decay_seconds(index: i32) -> f32 {
-    1.0 / (1.0 - decay_release_coeff(index as f32)) / passes_per_second()
+    decay_seconds_with(index, LEGACY_TABLES)
+}
+
+/// [`decay_seconds`] in the given rate tables.
+#[inline]
+pub fn decay_seconds_with(index: i32, tables: RateTables) -> f32 {
+    1.0 / (1.0 - (tables.decay_release)(index as f32)) / passes_per_second()
 }
 
 #[cfg(test)]
@@ -181,6 +210,33 @@ mod tests {
         // Table ends: attack 0.5 ms .. 46 s, decay tau 0.67 ms .. 9.2 s.
         assert!((decay_seconds(-64) - 0.000_67).abs() < 5e-5);
         assert!((decay_seconds(64) - 9.2).abs() < 0.3);
+    }
+
+    #[test]
+    fn settled_inverse_resolves_every_index() {
+        use crate::synth::SETTLED_TABLES as T;
+        // Settled tables have no plateaus: the time of an index maps back to that index (indexes
+        // 63 and 64 hold the same decay within f32 resolution, skip the clip entry).
+        for i in -64..=64 {
+            assert_eq!(
+                attack_index_with(attack_seconds_with(i, T), T),
+                i,
+                "attack {i}"
+            );
+        }
+        for i in -64..=63 {
+            assert_eq!(
+                decay_index_with(decay_seconds_with(i, T), T),
+                i,
+                "decay {i}"
+            );
+        }
+        // The stale search cannot: inside a plateau it returns the plateau start.
+        assert_ne!(attack_index(attack_seconds_with(-60, T)), -60);
+        assert_eq!(
+            attack_index(attack_seconds(-60)),
+            attack_index(attack_seconds(-61))
+        );
     }
 
     #[test]

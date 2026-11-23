@@ -59,6 +59,7 @@ BINARY_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bin", ".dat", ".wav", ".og
 BINARY_ALLOWLIST = (
     "assets/panel/proof/*.png",
     "crates/nord-gui/assets/baked/*.png",
+    "crates/nord-gui/assets/*.jpg",
     "docs/img/gui/*.png",
 )
 

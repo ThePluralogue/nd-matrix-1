@@ -10,7 +10,8 @@
 //! the parameter cache is recomputed only when a panel value changes.
 
 use super::strip_map::{
-    attack_index, decay_index, strip_word_for_cutoff, DECAY_TAU_FRACTION, STRIP_PASS_FRAMES,
+    attack_index_with, decay_index_with, strip_word_for_cutoff, DECAY_TAU_FRACTION,
+    STRIP_PASS_FRAMES,
 };
 use super::*;
 
@@ -53,13 +54,13 @@ impl StripEnvRecords {
         tables: RateTables,
     ) -> Self {
         let hold = decay_sec >= 44.0;
-        let atk = (tables.attack)(attack_index(attack_sec) as f32);
+        let atk = (tables.attack)(attack_index_with(attack_sec, tables) as f32);
         let dec_idx = if hold {
             RATE_INDEX_MAX
         } else {
-            decay_index(decay_sec.max(0.003) * DECAY_TAU_FRACTION)
+            decay_index_with(decay_sec.max(0.003) * DECAY_TAU_FRACTION, tables)
         };
-        let rel_idx = decay_index(release_sec.max(0.003) * DECAY_TAU_FRACTION);
+        let rel_idx = decay_index_with(release_sec.max(0.003) * DECAY_TAU_FRACTION, tables);
         Self {
             attack: FwAdrRecord {
                 a: 1.0,
@@ -133,7 +134,7 @@ pub struct StripParams {
 }
 
 /// Cache key: the panel values `StripParams` is a function of.
-pub(super) type StripKey = [f32; 16];
+pub(super) type StripKey = [f32; 17];
 
 impl SynthLayer {
     fn strip_key(&self) -> StripKey {
@@ -165,6 +166,7 @@ impl SynthLayer {
             k[5],
             k[6],
             if self.fw_adr_law { 1.0 } else { 0.0 },
+            if self.settled_rates { 1.0 } else { 0.0 },
         ]
     }
 
@@ -182,7 +184,7 @@ impl SynthLayer {
             }
         }
         // The oracle law reads the settled rate tables (D212); the default the stale sweep.
-        let tables = if self.fw_adr_law {
+        let tables = if self.fw_adr_law || self.settled_rates {
             SETTLED_TABLES
         } else {
             DEFAULT_TABLES

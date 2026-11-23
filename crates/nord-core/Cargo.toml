@@ -3,7 +3,6 @@ name = "nord-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish.workspace = true
 repository.workspace = true
 description = "Core DSP engines (Organ, Piano, Synth, 7-Layer FX, Morphing) and CBIN/.ns4b binary parsers for the ND Matrix 1."
 
@@ -15,5 +14,4 @@ path = "src/bin/ns4.rs"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 miniz_oxide = "0.8"
-nord-sharc = { path = "../nord-sharc" }
 
