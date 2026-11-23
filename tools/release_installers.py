@@ -474,7 +474,7 @@ def stage_linux_appdir(
         shutil.copy2(raw_stage / doc, doc_dir / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, doc_dir / lic.name)
-    # Notices of the runtime that appimagetool prepends (musl, LGPL libfuse, ...; D241).
+    # Notices of the runtime that appimagetool prepends (musl, LGPL libfuse, ...; D242).
     shutil.copytree(raw_stage / APPIMAGE_RUNTIME_DIR, doc_dir / "appimage-runtime")
 
     (appdir / "nd-matrix-1.desktop").write_text(DESKTOP_ENTRY, encoding="utf-8", newline="\n")
@@ -489,13 +489,13 @@ def stage_linux_appdir(
 
 
 def check_appimage_runtime(runtime_file: Path | None) -> Path:
-    """Return the runtime file after checking it is the pinned one (D241).
+    """Return the runtime file after checking it is the pinned one (D242).
 
     Without `--runtime-file`, `appimagetool` downloads the moving `continuous` runtime, whose
     licenses we cannot vouch for; a different file would not match `licenses/appimage-runtime/`.
     """
     if runtime_file is None:
-        raise ValueError("--appimage-runtime is required (pinned runtime, D241)")
+        raise ValueError("--appimage-runtime is required (pinned runtime, D242)")
     actual = sha256_hex(runtime_file)
     if actual != APPIMAGE_RUNTIME_SHA256:
         raise ValueError(

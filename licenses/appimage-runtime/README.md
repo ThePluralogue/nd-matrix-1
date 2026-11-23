@@ -41,20 +41,29 @@ release.
 
 ## libfuse (LGPL-2.1): your rights
 
-libfuse is statically linked into the runtime. Under LGPL-2.1 section 6 you may modify libfuse
-and relink the runtime. The complete corresponding source is public:
+**libfuse is licensed under LGPL-2.1 and is statically linked into the AppImage runtime.** The
+complete corresponding source and the patch are provided as the release asset
+`nd-matrix-1-<tag>-appimage-runtime-sources.tar.gz` (next to the `.AppImage` on the release page,
+with a `.sha256`). It contains, with these pins:
 
-- runtime source, build scripts and the libfuse patch (`patches/libfuse/mount.c.diff`):
-  https://github.com/AppImage/type2-runtime/tree/20251108
-- libfuse 3.15.0 source (SHA-256 `70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0`):
-  https://github.com/libfuse/libfuse/releases/download/fuse-3.15.0/fuse-3.15.0.tar.xz
-- squashfuse 0.5.2 source (SHA-256 `db0238c5981dabbd80ee09ae15387f390091668ca060a7bc38047912491443d3`):
-  https://github.com/vasi/squashfuse/archive/0.5.2.tar.gz
+| File | Origin | Pin |
+|---|---|---|
+| `fuse-3.15.0.tar.xz` | https://github.com/libfuse/libfuse/releases/download/fuse-3.15.0/fuse-3.15.0.tar.xz | SHA-256 `70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0` |
+| `squashfuse-0.5.2.tar.gz` | https://github.com/vasi/squashfuse/archive/0.5.2.tar.gz | SHA-256 `db0238c5981dabbd80ee09ae15387f390091668ca060a7bc38047912491443d3` |
+| `type2-runtime-20251108.tar.gz` | `git archive` of https://github.com/AppImage/type2-runtime tag `20251108` (build scripts, `BUILD.md`, runtime source) | commit `dd6cebedcbddde9c82f89b011e8e1d40b6e43868` |
+| `patches/libfuse/mount.c.diff` | the libfuse patch from the runtime source | same commit |
 
-`BUILD.md` in the runtime source explains how to rebuild it. To use a rebuilt runtime, run
-`appimagetool --runtime-file <your runtime> <AppDir> <output>` on the unpacked AppImage
-(`./app.AppImage --appimage-extract`). The runtime is a separate program: our application is data
-inside the SquashFS image and is not linked with libfuse.
+You may modify libfuse and replace the runtime in the AppImage (relinking):
+
+1. Unpack the three tarballs and change libfuse in `fuse-3.15.0/`.
+2. Rebuild the runtime from the type2-runtime source as its `BUILD.md` says (for example
+   `env ARCH=x86_64 scripts/build-with-docker.sh`); `scripts/common/install-dependencies.sh` there
+   builds libfuse and squashfuse from the tarballs, so point it at your modified libfuse.
+3. Unpack the AppImage (`./app.AppImage --appimage-extract`) and repack it with
+   `appimagetool --runtime-file <your runtime> squashfs-root <new>.AppImage`.
+
+The runtime is a separate program: our application is data inside the SquashFS image and is not
+linked with libfuse. `SOURCES.txt` in the asset repeats these steps.
 
 ## Provenance of these texts
 

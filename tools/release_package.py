@@ -47,7 +47,7 @@ THIRD_PARTY_NOTICES = "THIRD_PARTY_LICENSES.html"
 # from README_SRC, the others from EXTRA_DOCS and THIRD_PARTY_NOTICES).
 DOC_FILES = ("README.txt", "HOST_COMPATIBILITY.md", THIRD_PARTY_NOTICES)
 # License texts of the AppImage runtime that `appimagetool` embeds in every `.AppImage` (musl,
-# LGPL-2.1 libfuse, squashfuse, zstd, zlib, mimalloc; D241). Committed under `licenses/`, shipped in
+# LGPL-2.1 libfuse, squashfuse, zstd, zlib, mimalloc; D242). Committed under `licenses/`, shipped in
 # the Linux archive at the same relative path and in the AppImage under `usr/share/doc/<pkg>/`.
 APPIMAGE_RUNTIME_DIR = "licenses/appimage-runtime"
 # The runtime is pinned: `appimagetool` 1.9.0 otherwise downloads the moving `continuous` release

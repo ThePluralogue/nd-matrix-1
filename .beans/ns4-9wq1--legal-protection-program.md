@@ -36,7 +36,7 @@ Open:
 - [ ] ns4-0s8y Trademark policy for the ND Matrix 1 name
 - [ ] ns4-9ngp Decide DCO or CLA for contributions (Owner decision)
 - [ ] ns4-ns2j Counsel review of docs/LEGAL.md open questions (Owner action)
-- [ ] ns4-sgro Licenses of the AppImage runtime shipped in Linux releases
+- [x] ns4-sgro Licenses of the AppImage runtime shipped in Linux releases
 - [ ] ns4-eh57 Second history rewrite after the firmware migrations
 - [ ] ns4-80xe Trade dress review of the panel look
 

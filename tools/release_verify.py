@@ -13,7 +13,9 @@ Checks, with no third-party dependencies and no need for `dumpbin`/`nm`:
 4. `<archive>.sha256` matches the archive and uses LF line endings.
 5. `THIRD_PARTY_LICENSES.html` is present and is a real notices listing (D238).
 6. Linux archives carry `licenses/appimage-runtime/` (notices of the runtime inside the
-   `.AppImage`, including the LGPL-2.1 text; D241).
+   `.AppImage`, including the LGPL-2.1 text; D242).
+7. Linux archives have the `-appimage-runtime-sources.tar.gz` asset beside them (corresponding
+   source of the LGPL-2.1 libfuse in the runtime), complete and with a matching `.sha256`.
 
 Usage: python tools/release_verify.py <archive> [--target <rust triple>]
 Exit status 0 when clean, 1 with one problem per line on stderr otherwise.
@@ -38,6 +40,7 @@ from release_package import (
     Platform,
     sha256_hex,
 )
+from release_runtime_sources import SOURCES_FILES, sources_name_for_archive
 
 FORBIDDEN_PARTS = frozenset(
     {
@@ -245,7 +248,7 @@ def check_notices(data: bytes | None) -> list[str]:
 
 
 def check_runtime_notices(rel: dict[str, bytes]) -> list[str]:
-    """Linux archives must carry the AppImage runtime notices, with the LGPL-2.1 text (D241).
+    """Linux archives must carry the AppImage runtime notices, with the LGPL-2.1 text (D242).
 
     A missing file is reported by `check_layout`; an empty file, or a libfuse text that is not
     the LGPL, fails here.
@@ -259,6 +262,26 @@ def check_runtime_notices(rel: dict[str, bytes]) -> list[str]:
     if fuse and b"GNU LESSER GENERAL PUBLIC LICENSE" not in fuse:
         problems.append("libfuse-LGPL-2.1.txt is not the GNU LGPL text")
     return problems
+
+
+def check_sources_asset(archive: Path) -> list[str]:
+    """The LGPL-2.1 corresponding-source asset must sit beside a Linux archive (D242)."""
+    name = sources_name_for_archive(archive.name)
+    if name is None:
+        return [f"cannot derive the runtime sources asset name from {archive.name}"]
+    asset = archive.with_name(name)
+    if not asset.exists():
+        return [f"missing {name} (LGPL-2.1 source of the AppImage runtime)"]
+    try:
+        members = set(read_archive(asset))
+    except (OSError, tarfile.TarError) as err:
+        return [f"{name} unreadable: {err}"]
+    tops = {m.split("/", 1)[0] for m in members}
+    have = {m.split("/", 1)[1] for m in members if "/" in m}
+    problems = [f"{name} lacks {need}" for need in SOURCES_FILES if need not in have]
+    if len(tops) != 1:
+        problems.append(f"{name} must have one top-level folder, found {sorted(tops)}")
+    return problems + check_sha256(asset)
 
 
 def check_sha256(archive: Path) -> list[str]:
@@ -279,6 +302,8 @@ def verify(archive: Path, triple: str | None = None) -> list[str]:
     problems = check_layout(list(files), platform)
     problems += check_content(files, platform)
     problems += check_sha256(archive)
+    if platform.os == "linux":
+        problems += check_sources_asset(archive)
     return problems
 
 
