@@ -442,6 +442,30 @@ The ticks below mean the model exists and is tested. Which parts match the firmw
 - [x] Piano chain tap, steps 1 and 2 ([D185](DECISIONS.md), [piano-chain-tap-smp](research/piano-chain-tap-smp.md)): piano sound bind in the live driver, `sharc-live --smp` chip; a key reaches the SMP (70 to 117 messages, 4 programs), tap silent until the page refill
 - [x] Synth Engine key word answered ([D175](DECISIONS.md), [arp-pan-lanes](research/arp-pan-lanes.md), OQ40 closed): the key word's low bits are the output lane select (arp step pan), the census window read one lane, native hard pan gain is a unity lane switch; census rerun with the two-lane window done 2026-11-20 ([silent-programs](research/silent-programs.md) s8)
 
+## Legal & Licensing (`ns4-9wq1`)
+
+**Goal:** keep ND Matrix 1 a non-commercial, source-available interoperability project with a defensible legal posture. Record: [LEGAL.md](LEGAL.md). Not legal advice.
+
+- [x] PolyForm Noncommercial 1.0.0 `LICENSE`, crates unpublishable ([D231](DECISIONS.md#d231-project-license-is-polyform-noncommercial-100-crates-are-unpublishable), `ns4-halo`)
+- [x] DCO sign-off, legal posture and takedown contact ([D232](DECISIONS.md#d232-contributions-require-dco-sign-off-legal-posture-recorded-in-docslegalmd), `ns4-lgl8`)
+- [x] Firmware-derived files ratchet; raw artifacts never tracked ([D128](DECISIONS.md#d128-raw-firmware-artifacts-are-never-tracked-derived-data-is-classified-a-to-d-b-and-c-move-to-runtime-loading), `ns4-r4tq`)
+- [x] "ND Matrix 1" naming in UI, installers and plugin bundles (`ns4-tm7q`, `ns4-r7qd`)
+- [x] Vendor product photos removed and blocked in CI (`ns4-3o8r`)
+- [x] Permissive VST3 binding, copyleft gate in CI ([D233](DECISIONS.md#d233-the-daw-plugin-keeps-vst3-through-the-permissive-vst3-crate-no-copyleft-crate-ships-in-the-plugin-tree), `ns4-q7lp`, `ns4-pvb3`)
+- [x] Updater terms check and patent question recorded (`ns4-q7vn`)
+- [x] Third-party license notices in every release ([D238](DECISIONS.md#d238-releases-ship-third-party-license-notices-generated-by-cargo-about), `ns4-tpn7`)
+- [x] History rewrite purging vendor files (2026-11-23, LEGAL.md section 8)
+- [ ] VST3 host checks in real DAWs (`ns4-pvb3`)
+- [ ] Release tags moved and old PR refs purged (`ns4-vt4r`, owner)
+- [ ] Required status checks and source-available repo description (`ns4-6fbu`, owner)
+- [ ] Additional permission for musicians (`ns4-4qmh`)
+- [ ] Trademark policy for the ND Matrix 1 name (`ns4-0s8y`)
+- [ ] DCO or CLA decision (`ns4-9ngp`, owner)
+- [ ] Counsel review of LEGAL.md open questions (`ns4-ns2j`, owner)
+- [ ] AppImage runtime license notices (`ns4-sgro`)
+- [ ] Firmware-derived tables moved to runtime loading (`ns4-u8o2`), then a second history rewrite (`ns4-eh57`)
+- [ ] Trade dress review of the panel look (`ns4-80xe`)
+
 ## Parallel Lanes & Bean Dependency Graph
 
 | Lane | Active Beans | Blocked By | Scope |
