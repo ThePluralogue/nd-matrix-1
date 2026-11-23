@@ -115,8 +115,10 @@ pub const SETTLED_TABLES: RateTables = RateTables {
     decay_release: super::fw_env_settled::settled_decay_release_coeff,
 };
 
-/// Tables of the default strip chain. D212 proposes `SETTLED_TABLES` here (one line, owner
-/// approval pending, D22); `LEGACY_TABLES` stays the default until then.
+/// Tables of the default strip chain. `LEGACY_TABLES` stays the default: the settled tables are
+/// VERIFIED (D212) and the 2 frame pass they imply is VERIFIED (D237), but 8 of 17 hardware clips
+/// score worse with them on the default chain (D237, `docs/research/synth-env-pass-period.md`).
+/// Opt-in: `--synth-settled-rates` (`SynthLayer::settled_rates`) or `--synth-fw-adr-law`.
 pub const DEFAULT_TABLES: RateTables = LEGACY_TABLES;
 
 /// Time constant in passes of the attack rate, `1 / cA`.

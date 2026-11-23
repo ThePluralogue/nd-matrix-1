@@ -149,6 +149,8 @@ mod tests_fw_filter_golden;
 #[cfg(test)]
 mod tests_fw_velocity;
 #[cfg(test)]
+mod tests_pass_period;
+#[cfg(test)]
 #[rustfmt::skip]
 mod tests_fw_fm_golden;
 #[cfg(test)]
@@ -353,6 +355,9 @@ pub struct SynthLayer {
     /// the amp attack index of a negative word is scaled by `g / 127` (key byte `g`) per voice and
     /// the decay records of both chains stop at the sustain level 0.5. Strip chain only.
     pub fw_adr_law: bool,
+    /// Opt-in (default off, `--synth-settled-rates`, D237): the strip chain reads the settled rate
+    /// tables (`fw_env_settled.rs`) without the rest of `fw_adr_law`.
+    pub settled_rates: bool,
     /// Strip chain only, opt-in (default off, `--synth-stage3`): a `filter_raw3` layer runs the
     /// modelled stage `0x1257B2` (`fw_stage3.rs`) instead of the `Lp12` stand-in.
     pub fw_stage3: bool,
@@ -526,6 +531,7 @@ impl SynthLayer {
             filter_type_gain: false,
             fw_env_law: false,
             fw_adr_law: false,
+            settled_rates: false,
             fw_stage3: false,
             firmware_velocity: false,
             arp_firmware_walk: false,
@@ -563,6 +569,7 @@ impl SynthLayer {
             filter_type_gain: false,
             fw_env_law: false,
             fw_adr_law: false,
+            settled_rates: false,
             fw_stage3: false,
             wave_bank: false,
             knob_laws: true,

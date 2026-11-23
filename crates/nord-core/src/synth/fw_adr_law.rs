@@ -19,7 +19,8 @@
 
 use super::fw_knob_laws::rate_index_for_knob;
 use super::fw_velocity::effective_g;
-use super::strip_map::attack_index;
+use super::strip_map::attack_index_with;
+use super::SETTLED_TABLES;
 use super::{StripVoice, SynthLayer};
 
 /// Settled attack coefficient `b` per pass of the ADR attack record for the indexes -64..=63
@@ -82,7 +83,7 @@ impl SynthLayer {
     /// Amp attack index the chain uses for a new voice (stored rate knob, else the panel time).
     pub(super) fn amp_attack_word(&self) -> i32 {
         self.active_knobs().map_or_else(
-            || attack_index(self.attack_sec),
+            || attack_index_with(self.attack_sec, SETTLED_TABLES),
             |k| rate_index_for_knob(k.amp.attack),
         )
     }
@@ -90,7 +91,7 @@ impl SynthLayer {
     /// Filter attack index of the chain (stored rate knob, else the panel time).
     pub(super) fn filter_attack_word(&self) -> i32 {
         self.active_knobs().map_or_else(
-            || attack_index(self.filter_env_attack_sec),
+            || attack_index_with(self.filter_env_attack_sec, SETTLED_TABLES),
             |k| rate_index_for_knob(k.filter.attack),
         )
     }
