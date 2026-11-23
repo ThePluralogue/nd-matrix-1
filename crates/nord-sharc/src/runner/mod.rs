@@ -12,6 +12,7 @@ pub mod fx_run;
 pub mod fx_wav;
 pub mod jit_diff;
 pub mod live;
+pub mod live_bus;
 pub mod live_flash;
 pub mod live_presets;
 pub mod live_smp;

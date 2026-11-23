@@ -118,10 +118,25 @@ class SmpFlashFeed:
         }
 
 
-def attach(link, npno: bytes, path: Path, tap: Path | None = None) -> SmpFlashFeed:  # noqa: ANN001  # pragma: no cover
+def attach(
+    link,  # noqa: ANN001
+    npno: bytes,
+    path: Path,
+    tap: Path | None = None,
+    bus: int | None = None,
+    bus_tap: Path | None = None,
+) -> SmpFlashFeed:
     """Loads `npno` as the flash image of the live chip behind `link` and hooks its messages;
-    `tap` also captures the tapped frames (f32 little endian L R, local audio, never committed)."""
+    `tap` also captures the tapped frames (f32 little endian L R, local audio, never committed).
+    `bus` taps the DM word pair at that address instead of the post stage ring (`sharc-live` `B`,
+    D235: piano layer B writes `0x9405A`, which the ring does not carry); with `bus_tap` the bus
+    frames go to that file and the ring tap goes on beside them (same run, comparable)."""
     path.write_bytes(npno)
+    if bus is not None:
+        side = f" i {bus_tap.as_posix()}" if bus_tap is not None else ""
+        reply = link.command(f"B {bus:#x}{side}")
+        if not reply.startswith("B addr="):
+            raise RuntimeError(f"bus tap failed: {reply}")
     if tap is not None:
         link.command(f"C {tap.as_posix()}")
     reply = link.command(f"L {path.as_posix()}")

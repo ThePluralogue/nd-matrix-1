@@ -102,7 +102,7 @@ def f32(values: list[float]) -> bytes:
 
 
 def test_tap_stats_tells_silence_a_stuck_sample_and_audio_apart() -> None:
-    assert sf.tap_stats(b"")["kind"] == "silent"
+    assert sf.tap_stats(synthetic_npno(2, []))["kind"] == "silent"
     assert sf.tap_stats(f32([0.0] * 100))["kind"] == "silent"
     plateau = sf.tap_stats(f32([0.0431] * 5000))  # the D191 clavinet DC plateau
     assert plateau["kind"] == "plateau" and plateau["distinct_in_loudest_window"] == 1
@@ -167,3 +167,42 @@ def test_tap_fundamental_follows_the_octave_of_the_tone() -> None:
         assert got is not None
         out.append(got)
     assert abs(out[1] / out[0] - 2) < 0.03 and abs(out[2] / out[1] - 2) < 0.03
+
+
+class _FakeLink:
+    def __init__(self, bus_reply: str = "B addr=9405a mode=i") -> None:
+        self.sent: list[str] = []
+        self.bus_reply = bus_reply
+        self.on_send = None
+
+    def command(self, line: str) -> str:
+        self.sent.append(line)
+        if line.startswith("B "):
+            return self.bus_reply
+        return "L words=1" if line.startswith("L ") else "C ok"
+
+
+def test_attach_taps_a_bus_before_the_capture_and_only_when_asked(tmp_path) -> None:  # noqa: ANN001
+    link = _FakeLink()
+    sf.attach(link, synthetic_npno(2, []), tmp_path / "f.npno", tmp_path / "t.f32", 0x9405A)
+    assert [c.split()[0] for c in link.sent] == ["B", "C", "L"]
+    assert link.sent[0] == "B 0x9405a"
+    side = _FakeLink()
+    sf.attach(side, synthetic_npno(2, []), tmp_path / "f", None, 0x9405A, tmp_path / "b.f32")
+    assert side.sent[0] == f"B 0x9405a i {(tmp_path / 'b.f32').as_posix()}"
+    plain = _FakeLink()
+    sf.attach(plain, synthetic_npno(2, []), tmp_path / "f.npno", tmp_path / "t.f32")
+    assert [c.split()[0] for c in plain.sent] == ["C", "L"], "the ring tap stays the default"
+
+
+def test_attach_refuses_a_chip_that_rejects_the_bus_tap(tmp_path) -> None:  # noqa: ANN001
+    import pytest
+
+    with pytest.raises(RuntimeError, match="bus tap failed"):
+        sf.attach(
+            _FakeLink("ERR B: not a sample chip"),
+            synthetic_npno(2, []),
+            tmp_path / "f",
+            None,
+            0x9405A,
+        )
