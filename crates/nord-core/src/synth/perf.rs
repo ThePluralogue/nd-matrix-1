@@ -177,7 +177,22 @@ impl Default for PerfState {
 impl SynthLayer {
     /// True when the arpeggiator (not the Gate) consumes incoming notes.
     pub(super) fn arp_consumes_notes(&self) -> bool {
-        !matches!(self.arp_mode, ArpMode::Off | ArpMode::Gate)
+        match self.arp_mode {
+            ArpMode::Off => false,
+            ArpMode::Gate => self.gate_retriggers(),
+            _ => true,
+        }
+    }
+
+    /// Gate mode retriggers the held chord every step like Poly (firmware behaviour) instead of
+    /// chopping a sustained chord with an amplitude gate (legacy, `--legacy-arp`).
+    ///
+    /// VERIFIED (ARM side only): the ARM replay of A:17 Dual Gates layers A and B sends a note-on
+    /// every 150 ms step with a 100 ms gate (5 note-ons in 0.75 s; `arp-flag-census.json`,
+    /// `arp-gate-flag-trace.md`). The SHARC amplitude-gate path and what the ENV knob does in Gate
+    /// mode are not traced: ASSUMED that ENV only shapes the edge, which this path ignores.
+    pub(super) fn gate_retriggers(&self) -> bool {
+        self.arp_mode == ArpMode::Gate && self.arp_firmware_walk
     }
 
     /// KB Hold applies to this layer.

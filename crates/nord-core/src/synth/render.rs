@@ -652,7 +652,7 @@ impl SynthLayer {
             mix_r += out_r;
         }
 
-        if self.arp_mode == ArpMode::Gate {
+        if self.arp_mode == ArpMode::Gate && !self.gate_retriggers() {
             let g = self.perf.gate_level;
             if self.perf.pattern_on && self.perf.cur_pan != PatternPan::Center {
                 let (gl, gr) = pan_gains(self.perf.cur_pan.position());
