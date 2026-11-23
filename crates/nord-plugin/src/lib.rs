@@ -9,6 +9,7 @@
 #![allow(semicolon_in_expressions_from_non_local_macros)]
 
 pub mod audio_out;
+pub mod auto_library;
 pub mod aux_pedal_params;
 mod core_sync;
 pub mod editor;
@@ -18,6 +19,7 @@ pub mod fx_params;
 pub mod fx_selectors;
 pub mod fx_sharing_params;
 pub mod fx_variation_params;
+pub mod library_select;
 pub mod loader;
 pub mod menu_extra_params;
 pub mod midi;
@@ -37,6 +39,7 @@ pub mod program_hold;
 pub mod program_overrides;
 pub mod program_params;
 pub mod settings_params;
+pub mod shared_sounds;
 pub mod state;
 pub mod synth_gate_params;
 pub mod synth_mod_params;
@@ -50,6 +53,11 @@ use nord_core::engine::Stage4Engine;
 use nord_gui::audio::garbage::{spawn_reaper, Bin};
 use params::Stage4Params;
 use std::sync::Arc;
+
+/// How long `initialize` waits for the library program to be decoded (the host may render right
+/// after it: a bounce). ASSUMED: above the largest factory piano (218 MB, about 9 s on a desktop)
+/// with margin for several instances sharing one decode.
+const LOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// The Nord Stage 4 DAW Plugin.
 pub struct NdMatrix1Plugin {
@@ -69,6 +77,11 @@ pub struct NdMatrix1Plugin {
     pub load_tx: loader::LoadSender,
     /// Consumer end, drained at the start of every `process()` block.
     pub load_rx: loader::LoadReceiver,
+    /// The library worker serving `library_program` (`auto_library.rs`); `None` without a saved
+    /// library. Started when the instance activates.
+    pub library: Option<auto_library::LibraryLink>,
+    /// The `library_program` value last sent to the worker; a change in `process()` sends again.
+    last_library_program: i32,
 }
 
 impl Default for NdMatrix1Plugin {
@@ -88,6 +101,8 @@ impl Default for NdMatrix1Plugin {
             note_rx,
             load_tx,
             load_rx,
+            library: None,
+            last_library_program: -1,
         }
     }
 }
@@ -119,6 +134,63 @@ impl NdMatrix1Plugin {
         let prog = ProgramDecoded::from_cbin_file(&CbinFile::parse(bytes)?)?;
         self.load_program(prog);
         Ok(())
+    }
+
+    /// Starts the library worker for the saved `.ns4b` (once per instance) and asks for the
+    /// current `library_program` when it is not the one already asked for (a host
+    /// re-initialises after a state load or a sample-rate change); later changes are sent from
+    /// `process()`. Returns whether a request went out.
+    pub fn start_library(&mut self, path: Option<std::path::PathBuf>) -> bool {
+        if self.library.is_none() {
+            self.library = auto_library::LibraryLink::start(path, self.load_tx.clone());
+        }
+        self.request_library_program()
+    }
+
+    /// Sends `library_program` to the worker when it changed. No allocation, no lock. `true`
+    /// when a request was sent.
+    fn request_library_program(&mut self) -> bool {
+        let want = self.params.library_program.value();
+        if want == self.last_library_program {
+            return false;
+        }
+        self.last_library_program = want;
+        match &self.library {
+            Some(link) => link.request(want),
+            None => false,
+        }
+    }
+
+    /// Waits for the worker to finish the program asked for in [`Self::start_library`] and
+    /// applies what it queued, so the engine holds the program before the host's first block
+    /// (a bounce renders right after `initialize`; SoundCraft builds its render instances
+    /// without flagging them offline). Runs on the host's main or control thread, never the
+    /// audio thread. Returns whether the worker finished in time.
+    pub fn wait_for_library_program(&mut self) -> bool {
+        let Some(link) = &self.library else {
+            return true;
+        };
+        let started = std::time::Instant::now();
+        let handled = link.wait_handled(self.last_library_program, LOAD_WAIT);
+        self.drain_loads();
+        auto_library::report(&format!(
+            "program {}: {} after {} ms (applied: program={}, pianos={:?}, samples={:?})",
+            library_select::label(self.last_library_program),
+            if handled { "ready" } else { "still loading" },
+            started.elapsed().as_millis(),
+            self.loaded.program.is_some(),
+            self.loaded
+                .pianos
+                .iter()
+                .map(Option::is_some)
+                .collect::<Vec<_>>(),
+            self.loaded
+                .samples
+                .iter()
+                .map(Option::is_some)
+                .collect::<Vec<_>>()
+        ));
+        handled
     }
 
     /// Applies every queued editor load (`process()` start): no allocation, no free, no lock.
@@ -171,6 +243,17 @@ impl Plugin for NdMatrix1Plugin {
         self.bin = spawn_reaper();
         // The saved Nord OS update's WAVE tables, parsed off-thread and installed once per process.
         wave_tables::install_saved_in_background();
+        // The saved sound library: the wanted program is decoded off-thread, queued, and
+        // applied before the first block (the host may render at once).
+        if self.start_library(auto_library::saved_library()) {
+            auto_library::report(&format!(
+                "initialize: {:?} at {} Hz, loading program {}",
+                buffer_config.process_mode,
+                buffer_config.sample_rate,
+                library_select::label(self.last_library_program)
+            ));
+            self.wait_for_library_program();
+        }
         self.rebuild_engine();
         true
     }
@@ -186,7 +269,9 @@ impl Plugin for NdMatrix1Plugin {
         aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        // Editor loads first, so the block sync below sees the program that was just loaded.
+        // A moved Program parameter asks the worker; editor and worker loads are applied first,
+        // so the block sync below sees the program that was just loaded.
+        self.request_library_program();
         self.drain_loads();
 
         // Synchronize automatable parameters to engine state
@@ -322,6 +407,7 @@ mod tests {
     fn test_editor_keybed_note_reaches_process_output() {
         let mut plugin = NdMatrix1Plugin::default();
         let mut init_ctx = MockInitContext;
+        crate::auto_library::ignore_saved_library();
         plugin.initialize(
             &NdMatrix1Plugin::AUDIO_IO_LAYOUTS[0],
             &BufferConfig {
@@ -418,6 +504,7 @@ mod tests {
     fn test_plugin_process_buffer_zero_alloc() {
         let mut plugin = NdMatrix1Plugin::default();
         let mut init_ctx = MockInitContext;
+        crate::auto_library::ignore_saved_library();
         plugin.initialize(
             &NdMatrix1Plugin::AUDIO_IO_LAYOUTS[0],
             &BufferConfig {

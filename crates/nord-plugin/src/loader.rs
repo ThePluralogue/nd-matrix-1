@@ -50,6 +50,9 @@ pub enum LoadJob {
     },
     /// Every opt-in firmware path at once (`AudioCommand::SetFirmwareOptions`).
     Firmware(FirmwareOptions),
+    /// The WAVE stage of the three synth layers on or off (`SynthLayer::wave_bank`), set by the
+    /// library worker once the OS update tables are installed. Holds no parameter group.
+    WaveBank(bool),
 }
 
 /// Producer end, owned by the editor.
@@ -95,6 +98,8 @@ pub struct Loaded {
     pub pianos: [Option<Arc<NpnoSound>>; 2],
     pub samples: [Option<Arc<SynthSampleSound>>; 3],
     pub firmware: Option<FirmwareOptions>,
+    /// `LoadJob::WaveBank`: the WAVE stage switch, re-applied after the firmware options.
+    pub wave_bank: Option<bool>,
 }
 
 impl Loaded {
@@ -148,6 +153,13 @@ impl Loaded {
                 opts.apply_exact(engine);
                 params.program_hold.hold(Group::FIRMWARE);
                 self.firmware = Some(opts);
+                if let Some(on) = self.wave_bank {
+                    set_wave_bank(engine, on);
+                }
+            }
+            LoadJob::WaveBank(on) => {
+                set_wave_bank(engine, on);
+                self.wave_bank = Some(on);
             }
         }
     }
@@ -167,7 +179,18 @@ impl Loaded {
         if let Some(opts) = &self.firmware {
             opts.apply_exact(engine);
         }
+        if let Some(on) = self.wave_bank {
+            set_wave_bank(engine, on);
+        }
     }
+}
+
+/// The WAVE stage switch of the three synth layers (what `FirmwareOptions::synth_wave_bank`
+/// sets; the tables themselves are process-global, `wave_tables.rs`).
+fn set_wave_bank(engine: &mut Stage4Engine, on: bool) {
+    engine.synth_a.wave_bank = on;
+    engine.synth_b.wave_bank = on;
+    engine.synth_c.wave_bank = on;
 }
 
 #[cfg(test)]
@@ -351,6 +374,30 @@ mod tests {
         assert_eq!(loaded.firmware, Some(opts));
         assert!(p.program_hold.owned_by_program(Group::Firmware));
         assert!(p.program_hold.runs(Group::Organ));
+    }
+
+    #[test]
+    fn a_wave_bank_job_switches_the_stage_holds_nothing_and_survives_firmware_and_rebuild() {
+        let p = params();
+        let mut e = Stage4Engine::new(48_000.0);
+        let mut loaded = Loaded::default();
+        assert!(!e.synth_a.wave_bank);
+        loaded.apply(LoadJob::WaveBank(true), &mut e, &p, &Bin::inline());
+        assert!(e.synth_a.wave_bank && e.synth_b.wave_bank && e.synth_c.wave_bank);
+        assert!(p.program_hold.runs(Group::Firmware), "no group is held");
+        // Firmware options with the stage off do not undo the switch.
+        loaded.apply(
+            LoadJob::Firmware(FirmwareOptions::default()),
+            &mut e,
+            &p,
+            &Bin::inline(),
+        );
+        assert!(e.synth_c.wave_bank);
+        let mut fresh = Stage4Engine::new(96_000.0);
+        loaded.restore(&mut fresh);
+        assert!(fresh.synth_b.wave_bank);
+        loaded.apply(LoadJob::WaveBank(false), &mut e, &p, &Bin::inline());
+        assert!(!e.synth_a.wave_bank);
     }
 
     #[test]

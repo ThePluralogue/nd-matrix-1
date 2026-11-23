@@ -2,7 +2,7 @@
 //! remember it, report whether the WAVE tables load. Reads the file on demand; stores only its path.
 
 use crate::render_opts_wave::WAVE_TABLES_ENV;
-use crate::user_config::{self, UserConfig};
+use crate::user_config;
 use std::path::{Path, PathBuf};
 
 /// Official download links of the current OS (v1.66). VERIFIED: both answered `302` to a HEAD
@@ -69,18 +69,17 @@ pub fn set(path: &Path, config: &Path) -> Result<usize, String> {
     let abs = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = abs.to_string_lossy();
     let shown = shown.strip_prefix(r"\\?\").unwrap_or(&shown).to_string();
-    user_config::save(
-        config,
-        &UserConfig {
-            os_update_path: Some(shown),
-        },
-    )?;
+    let mut cfg = user_config::load_or_default(config);
+    cfg.os_update_path = Some(shown);
+    user_config::save(config, &cfg)?;
     Ok(n)
 }
 
 /// Forgets the saved path.
 pub fn clear(config: &Path) -> Result<(), String> {
-    user_config::save(config, &UserConfig::default())
+    let mut cfg = user_config::load_or_default(config);
+    cfg.os_update_path = None;
+    user_config::save(config, &cfg)
 }
 
 /// Plain-language text of a [`Status`] for the CLI and the GUI.
@@ -149,6 +148,7 @@ pub fn run(args: &[String], config: &Path, env: Option<&str>) -> Result<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::user_config::UserConfig;
 
     fn cfg(name: &str) -> PathBuf {
         std::env::temp_dir()
@@ -192,6 +192,7 @@ mod tests {
             &c,
             &UserConfig {
                 os_update_path: Some("/saved".into()),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -245,6 +246,7 @@ mod tests {
             &c,
             &UserConfig {
                 os_update_path: Some("/x".into()),
+                ..Default::default()
             },
         )
         .unwrap();

@@ -18,6 +18,11 @@ pub struct UserConfig {
     /// Path of the user's Nord OS update file (`.exe`, `.dmg`, `.zip` or extracted container).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub os_update_path: Option<String>,
+    /// Path of the user's `.ns4b` sound library (the factory backup, or an edited one): the
+    /// programs, pianos and sample banks the plugin loads by its `library_program` parameter
+    /// (`library_setting`). Read only by the plugin and `ns4 library`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub library_path: Option<String>,
 }
 
 /// Config directory for the given platform inputs (pure, for tests): Windows `%APPDATA%`, macOS
@@ -86,6 +91,21 @@ pub fn saved_default(env: Option<&str>, config: &Path) -> Result<Option<PathBuf>
         .os_update_path
         .filter(|p| !p.trim().is_empty())
         .map(PathBuf::from))
+}
+
+/// The saved `.ns4b` library path, or `Ok(None)` when nothing is saved. A config file that cannot
+/// be read or parsed is an `Err`.
+pub fn saved_library(config: &Path) -> Result<Option<PathBuf>, String> {
+    Ok(load(config)?
+        .library_path
+        .filter(|p| !p.trim().is_empty())
+        .map(PathBuf::from))
+}
+
+/// Loads `config` for editing: a missing or unreadable file counts as the empty config, so one
+/// setting can be changed without losing the other.
+pub fn load_or_default(config: &Path) -> UserConfig {
+    load(config).unwrap_or_default()
 }
 
 /// What start-up does with the saved setting: the path to put in `NS4_WAVE_TABLES` (only when it
@@ -187,6 +207,7 @@ mod tests {
         assert_eq!(load(&path).unwrap(), UserConfig::default());
         let cfg = UserConfig {
             os_update_path: Some("C:/dl/Update.exe".into()),
+            ..Default::default()
         };
         save(&path, &cfg).unwrap();
         assert_eq!(load(&path).unwrap(), cfg);
@@ -201,6 +222,7 @@ mod tests {
             &path,
             &UserConfig {
                 os_update_path: Some("/saved/os.exe".into()),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -252,6 +274,7 @@ mod tests {
         let _ = std::fs::remove_file(&gone);
         let cfg = UserConfig {
             os_update_path: Some(gone.display().to_string()),
+            ..Default::default()
         };
         save(&path, &cfg).unwrap();
         let r = resolve_saved(None, &path, crate::firmware_setting::check);
@@ -277,6 +300,7 @@ mod tests {
             &path,
             &UserConfig {
                 os_update_path: Some(img.display().to_string()),
+                ..Default::default()
             },
         )
         .unwrap();

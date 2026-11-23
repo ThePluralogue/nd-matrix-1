@@ -94,7 +94,8 @@ pub fn group_of(id: &str) -> Option<Group> {
     let tail = |suffix: &str| id.ends_with(suffix);
     Some(match family {
         "master" if id == "master_level" || id == "master_compressor" => Group::Levels,
-        "master" | "midi" | "mod" | "control" | "aftertouch" => Group::Live,
+        // `library_program` picks the program itself: a load must not re-arm anything.
+        "master" | "midi" | "mod" | "control" | "aftertouch" | "library" => Group::Live,
         "split" | "layer" => Group::Layers,
         "organ" | "piano" | "synth" if tail("_enabled") => Group::Layers,
         "organ" | "piano" | "synth" if tail("_level") => Group::Levels,

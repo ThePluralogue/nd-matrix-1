@@ -105,6 +105,7 @@ fn ctx() -> Ctx {
 
 fn activate() -> NdMatrix1Plugin {
     let mut plugin = NdMatrix1Plugin::default();
+    nord_plugin::auto_library::ignore_saved_library();
     let ok = plugin.initialize(
         &NdMatrix1Plugin::AUDIO_IO_LAYOUTS[1],
         &BufferConfig {
