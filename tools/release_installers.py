@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 
 from release_package import (
+    APPIMAGE_RUNTIME_DIR,
+    APPIMAGE_RUNTIME_SHA256,
     DOC_FILES,
     LEGACY_PLUGIN_STEM,
     PLATFORMS,
@@ -28,6 +30,7 @@ from release_package import (
     THIRD_PARTY_NOTICES,
     Platform,
     collect,
+    sha256_hex,
     write_sha256,
 )
 
@@ -471,6 +474,8 @@ def stage_linux_appdir(
         shutil.copy2(raw_stage / doc, doc_dir / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, doc_dir / lic.name)
+    # Notices of the runtime that appimagetool prepends (musl, LGPL libfuse, ...; D241).
+    shutil.copytree(raw_stage / APPIMAGE_RUNTIME_DIR, doc_dir / "appimage-runtime")
 
     (appdir / "nd-matrix-1.desktop").write_text(DESKTOP_ENTRY, encoding="utf-8", newline="\n")
     (appdir / "nd-matrix-1.svg").write_text(APP_SVG_ICON, encoding="utf-8", newline="\n")
@@ -483,6 +488,22 @@ def stage_linux_appdir(
     return appdir, appimage_path
 
 
+def check_appimage_runtime(runtime_file: Path | None) -> Path:
+    """Return the runtime file after checking it is the pinned one (D241).
+
+    Without `--runtime-file`, `appimagetool` downloads the moving `continuous` runtime, whose
+    licenses we cannot vouch for; a different file would not match `licenses/appimage-runtime/`.
+    """
+    if runtime_file is None:
+        raise ValueError("--appimage-runtime is required (pinned runtime, D241)")
+    actual = sha256_hex(runtime_file)
+    if actual != APPIMAGE_RUNTIME_SHA256:
+        raise ValueError(
+            f"{runtime_file} has sha256 {actual}, expected the pinned {APPIMAGE_RUNTIME_SHA256}"
+        )
+    return runtime_file
+
+
 def build_linux_appimage(
     label: str,
     out_dir: Path,
@@ -490,10 +511,13 @@ def build_linux_appimage(
     appimagetool: str = "appimagetool",
     root: Path = ROOT,
     target_dir: Path | None = None,
+    runtime_file: Path | None = None,
 ) -> Path:
+    runtime_file = check_appimage_runtime(runtime_file)
     appdir, appimage_path = stage_linux_appdir(label, out_dir, work_dir, root, target_dir)
     merged_env = {**os.environ, "ARCH": "x86_64", "APPIMAGE_EXTRACT_AND_RUN": "1"}
-    subprocess.run([appimagetool, str(appdir), str(appimage_path)], env=merged_env, check=True)
+    cmd = [appimagetool, "--runtime-file", str(runtime_file), str(appdir), str(appimage_path)]
+    subprocess.run(cmd, env=merged_env, check=True)
     write_sha256(appimage_path)
     return appimage_path
 
@@ -789,6 +813,11 @@ def main(argv: list[str] | None = None) -> int:
         help="installer formats to build (default: all native formats for --target)",
     )
     parser.add_argument("--appimagetool", default="appimagetool")
+    parser.add_argument(
+        "--appimage-runtime",
+        type=Path,
+        help="pinned type2 runtime file (APPIMAGE_RUNTIME_URL); required for the appimage format",
+    )
     args = parser.parse_args(argv)
 
     from release_package import version_from_tag, workspace_version
@@ -814,7 +843,13 @@ def main(argv: list[str] | None = None) -> int:
         elif fmt == "appimage":
             built.append(
                 build_linux_appimage(
-                    label, args.out, args.work, args.appimagetool, args.root, args.target_dir
+                    label,
+                    args.out,
+                    args.work,
+                    args.appimagetool,
+                    args.root,
+                    args.target_dir,
+                    args.appimage_runtime,
                 )
             )
         elif fmt == "dmg":

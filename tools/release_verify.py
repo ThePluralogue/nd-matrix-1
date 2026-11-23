@@ -12,6 +12,8 @@ Checks, with no third-party dependencies and no need for `dumpbin`/`nm`:
    Mach-O modules are checked by symbol-name search in the file image.
 4. `<archive>.sha256` matches the archive and uses LF line endings.
 5. `THIRD_PARTY_LICENSES.html` is present and is a real notices listing (D238).
+6. Linux archives carry `licenses/appimage-runtime/` (notices of the runtime inside the
+   `.AppImage`, including the LGPL-2.1 text; D241).
 
 Usage: python tools/release_verify.py <archive> [--target <rust triple>]
 Exit status 0 when clean, 1 with one problem per line on stderr otherwise.
@@ -26,7 +28,16 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from release_package import BINS, PLATFORMS, PLUGIN_STEM, THIRD_PARTY_NOTICES, Platform, sha256_hex
+from release_package import (
+    APPIMAGE_RUNTIME_DIR,
+    APPIMAGE_RUNTIME_FILES,
+    BINS,
+    PLATFORMS,
+    PLUGIN_STEM,
+    THIRD_PARTY_NOTICES,
+    Platform,
+    sha256_hex,
+)
 
 FORBIDDEN_PARTS = frozenset(
     {
@@ -95,6 +106,8 @@ def expected_files(platform: Platform) -> list[str]:
             f"{PLUGIN_STEM}.vst3/Contents/Info.plist",
             vst3,
         ]
+    if platform.os == "linux":
+        base += [f"{APPIMAGE_RUNTIME_DIR}/{name}" for name in APPIMAGE_RUNTIME_FILES]
     return base + [f"{PLUGIN_STEM}.clap", vst3]
 
 
@@ -206,6 +219,8 @@ def check_content(files: dict[str, bytes], platform: Platform) -> list[str]:
     if "not been verified in any daw" not in readme:
         problems.append("README.txt must state the plugin is not DAW-verified")
     problems += check_notices(rel.get(THIRD_PARTY_NOTICES))
+    if platform.os == "linux":
+        problems += check_runtime_notices(rel)
     return problems
 
 
@@ -226,6 +241,23 @@ def check_notices(data: bytes | None) -> list[str]:
     for needle in NOTICES_REQUIRED_TEXT:
         if needle not in text:
             problems.append(f"{THIRD_PARTY_NOTICES} lacks {needle!r}")
+    return problems
+
+
+def check_runtime_notices(rel: dict[str, bytes]) -> list[str]:
+    """Linux archives must carry the AppImage runtime notices, with the LGPL-2.1 text (D241).
+
+    A missing file is reported by `check_layout`; an empty file, or a libfuse text that is not
+    the LGPL, fails here.
+    """
+    problems = []
+    for name in APPIMAGE_RUNTIME_FILES:
+        data = rel.get(f"{APPIMAGE_RUNTIME_DIR}/{name}")
+        if data is not None and not data.strip():
+            problems.append(f"{APPIMAGE_RUNTIME_DIR}/{name} is empty")
+    fuse = rel.get(f"{APPIMAGE_RUNTIME_DIR}/libfuse-LGPL-2.1.txt")
+    if fuse and b"GNU LESSER GENERAL PUBLIC LICENSE" not in fuse:
+        problems.append("libfuse-LGPL-2.1.txt is not the GNU LGPL text")
     return problems
 
 

@@ -213,6 +213,11 @@ jobs:
             https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
           echo "46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1  /tmp/appimagetool" | sha256sum -c -
           chmod +x /tmp/appimagetool
+          # Pinned runtime (D241): without --runtime-file appimagetool downloads the moving
+          # `continuous` runtime. tools/release_installers.py checks the sha256 pinned in
+          # tools/release_package.py before building.
+          curl -fsSL -o /tmp/appimage-runtime \
+            https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
 
       - name: Build native OS installers and SHA256 files
         shell: bash
@@ -222,7 +227,7 @@ jobs:
           set -euo pipefail
           args=(--target "${{ matrix.target }}" --out dist)
           if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
-          if [ "${{ runner.os }}" = "Linux" ]; then args+=(--appimagetool /tmp/appimagetool); fi
+          if [ "${{ runner.os }}" = "Linux" ]; then args+=(--appimagetool /tmp/appimagetool --appimage-runtime /tmp/appimage-runtime); fi
           python tools/release_installers.py "${args[@]}"
 
       - name: Upload release artifact

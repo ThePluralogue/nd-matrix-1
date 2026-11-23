@@ -216,3 +216,26 @@ def test_main_unreadable_archive(tmp_path, capsys):
     bad = tmp_path / "nd-matrix-1-v1-linux-x86_64.tar.gz"
     bad.write_bytes(b"not gzip")
     assert rv.main([str(bad)]) == 1
+
+
+def test_linux_archive_without_runtime_notices_fails_release(tmp_path):
+    archive = build(tmp_path, LIN)
+    assert rv.verify(archive, LIN.triple) == []
+    _drop(archive, "/licenses/appimage-runtime/libfuse-LGPL-2.1.txt")
+    problems = rv.verify(archive, LIN.triple)
+    assert "missing licenses/appimage-runtime/libfuse-LGPL-2.1.txt" in problems
+
+
+def test_runtime_notices_empty_or_wrong_libfuse_text_fail_release():
+    base = rv.APPIMAGE_RUNTIME_DIR
+    rel = {f"{base}/{n}": b"text" for n in rv.APPIMAGE_RUNTIME_FILES}
+    assert any("not the GNU LGPL" in p for p in rv.check_runtime_notices(rel))
+    rel[f"{base}/libfuse-LGPL-2.1.txt"] = b"GNU LESSER GENERAL PUBLIC LICENSE"
+    assert rv.check_runtime_notices(rel) == []
+    rel[f"{base}/musl-LICENSE.txt"] = b"  \n"
+    assert rv.check_runtime_notices(rel) == [f"{base}/musl-LICENSE.txt is empty"]
+
+
+@pytest.mark.parametrize("platform", [WIN, MAC])
+def test_runtime_notices_not_required_outside_linux(tmp_path, platform):
+    assert not any(f.startswith("licenses/") for f in rv.expected_files(platform))
