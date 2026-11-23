@@ -1,6 +1,6 @@
-# Contributing to Nord Stage 4 Emulator
+# Contributing to ND Matrix 1
 
-Thank you for your interest in contributing to **Nord Stage 4 Emulator** (`nord-stage-4-emulator`). This project is built for **interoperability, research, preservation, and compatibility** with the Clavia Nord Stage 4 (`product_id=46`).
+Thank you for your interest in contributing to **ND Matrix 1** (`nord-stage-4-emulator`). This project is built for **interoperability, research, preservation, and compatibility** with the Clavia Nord Stage 4 (`product_id=46`).
 
 ---
 
@@ -8,8 +8,18 @@ Thank you for your interest in contributing to **Nord Stage 4 Emulator** (`nord-
 
 - **DSP & Engine Accuracy:** Improve the Organ (`DSPO`), Piano (`DSPF`), Synth (`DSPS`), or Effects pipelines, or help close gaps in [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) and [docs/TECH_DEBT.md](docs/TECH_DEBT.md).
 - **Binary & Firmware Interoperability:** Expand lossless `CBIN` (`.ns4p`, `.ns4l`, `.ns4y`, `.ns4n`, `.ns4o`, `.ns4t`), `.ns4b`, and firmware container support.
-- **GUI, CLI & DAW Plugin:** Improve `nord-stage4`, `ns4`, or CLAP/VST3 host compatibility ([docs/HOST_COMPATIBILITY.md](docs/HOST_COMPATIBILITY.md)).
+- **GUI, CLI & DAW Plugin:** Improve `nd-matrix-1`, `ns4`, or CLAP/VST3 host compatibility ([docs/HOST_COMPATIBILITY.md](docs/HOST_COMPATIBILITY.md)).
 - **Tests & Documentation:** Add deterministic unit tests, verify hardware/firmware behaviour, or keep [docs/specs/](docs/specs/README.md) up to date.
+
+---
+
+## Licensing of contributions
+
+- **Sign off every commit** under the [Developer Certificate of Origin 1.1](https://developercertificate.org) with `git commit -s`, which adds `Signed-off-by: Your Name <you@example.com>`. By signing off you certify that you wrote the change or have the right to submit it under the project license.
+- Contributions are licensed under the project license (see `LICENSE`), the same as the rest of the repository.
+- **Do not submit** firmware bytes, disassembly listings of vendor code, samples, factory presets, or vendor art (logos, photos, textures, traced or sampled images). Only derived values, closed-form equations and your own measurements belong in the repository: see [D20](docs/DECISIONS.md#d20-derived-values-only-no-firmware-bytes-in-the-repository) and [D128](docs/DECISIONS.md#d128-raw-firmware-artifacts-are-never-tracked-derived-data-is-classified-a-to-d-b-and-c-move-to-runtime-loading).
+- CI runs `python tools/check_dco.py` on pull requests and fails if a commit lacks a `Signed-off-by:` trailer (merge commits are exempt). Fix a missed one with `git rebase --signoff <base>` and a force push to your branch.
+- The legal posture and the rights-holder contact process are in [docs/LEGAL.md](docs/LEGAL.md).
 
 ---
 
