@@ -149,7 +149,7 @@ def drive(ns, chips: Chips, router: rt.Router, source=None, before=None) -> dict
     }
     plan = [("load", LOAD_TICKS, None, None), ("idle", IDLE_TICKS, None, None),
             ("key", ns.key_ticks, None, chord),
-            ("off", OFF_TICKS, lambda: [rig.send(kd.note_off(k)) for k in keys], None)]  # fmt: skip
+            ("off", ns.off_ticks, lambda: [rig.send(kd.note_off(k)) for k in keys], None)]  # fmt: skip  # noqa: E501
     starts, marks = {}, {}
     seen_prev = dict(router.seen)
     for name, ticks, action, events in plan:
@@ -167,7 +167,9 @@ def drive(ns, chips: Chips, router: rt.Router, source=None, before=None) -> dict
             )
         if name == "idle" and ns.piano_bind:
             result["piano_bind"] = bind_program_piano(session.emu, ns.piano_bind, program)
-            flash = attach_smp_flash(chips, ns.piano_bind, result["piano_bind"], ns.log)
+            flash = attach_smp_flash(
+                chips, ns.piano_bind, result["piano_bind"], ns.log, ns.bus_tap, ns.bus_side
+            )
         now = {s.name: snapshot(link, t0) for s, link in chips.items}
         phases[name] = {"ticks": ticks, **{n: phase_delta(prev[n], now[n]) for n in now}}
         phases[name]["arm_messages"] = seen_delta(seen_prev, router.seen)  # every comm, D170
@@ -210,7 +212,14 @@ def bind_program_piano(emu, backup: Path, program: bytes) -> dict:  # noqa: ANN0
     return {"layer": layer, "member": member, **pb.bind_piano(emu, npno, layer=layer)}
 
 
-def attach_smp_flash(chips, backup: Path, bound: dict, log: Path | None):  # noqa: ANN001, ANN201  # pragma: no cover
+def attach_smp_flash(  # noqa: ANN201  # pragma: no cover
+    chips,  # noqa: ANN001
+    backup: Path,
+    bound: dict,
+    log: Path | None,
+    bus: int | None = None,
+    side: bool = False,
+):
     """Serve the bound `.npno` as the flash of the live SMP chip (`arm_smp_flash`, D191)."""
     import arm_piano_load as pl
     import arm_smp_flash as sf
@@ -222,7 +231,9 @@ def attach_smp_flash(chips, backup: Path, bound: dict, log: Path | None):  # noq
     path = (log or Path(".")) / "smp_flash.npno"  # a local scratch copy, never committed
     path.parent.mkdir(parents=True, exist_ok=True)
     tap = path.with_name("smp_tap.f32") if log else None
-    feed = sf.attach(link, npno, path, tap)
+    feed = sf.attach(
+        link, npno, path, tap, bus, path.with_name("smp_bus.f32") if side and log else None
+    )
     return feed, link, npno, tap
 
 
@@ -298,6 +309,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
     ap.add_argument("--sys-exe", type=Path, help="sharc-sys executable: replay the logs afterwards")
     ap.add_argument("--key", type=int, default=KEY)
     ap.add_argument("--key-ticks", type=int, default=KEY_TICKS)
+    ap.add_argument("--off-ticks", type=int, default=OFF_TICKS,
+                    help="ticks after the key-up (default 300; a release tap needs thousands)")  # fmt: skip  # noqa: E501
     ap.add_argument("--keys", help="chord notes, comma list (default: --key)")
     ap.add_argument(
         "--poll-advance",
@@ -320,6 +333,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
                     help="serve the ARM SPI reads from the DSP side (D147)")  # fmt: skip
     ap.add_argument("--images", type=Path, help="dir with PNO ORG core<N>_sram.bin")
     ap.add_argument("--log", type=Path, help="directory for one msg-script per chip")
+    ap.add_argument("--bus-side", action="store_true",
+                    help="with --bus-tap and --log: write the bus frames to smp_bus.f32 and keep "
+                    "the ring tap in smp_tap.f32 (same run)")  # fmt: skip
+    ap.add_argument("--bus-tap", type=lambda v: int(v, 0), metavar="ADDR",
+                    help="SMP tap: the DM word pair at ADDR (e.g. 0x9405A, piano layer B) "
+                    "instead of the post stage ring (D233)")  # fmt: skip
     ap.add_argument("--out", type=Path)
     ns = ap.parse_args(argv)
     sys.path.insert(0, str(Path(__file__).resolve().parent))

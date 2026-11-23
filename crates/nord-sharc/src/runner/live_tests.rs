@@ -78,3 +78,33 @@ fn server_passes_equal_lane_run_on_the_same_messages() {
         "{r} vs {sumsq:e}"
     );
 }
+
+#[test]
+fn the_b_command_needs_a_sample_chip_and_names_its_tap() {
+    use super::live_sy::SyModel;
+    let mut l = live(vec![]);
+    assert!(
+        l.handle("B 0x9405A").unwrap().starts_with("ERR"),
+        "no sample chip"
+    );
+    let mut l = live(vec![]).with_sy(SyModel::smp(1));
+    assert_eq!(
+        l.exec("B 0x9405A").unwrap(),
+        Some("B addr=9405a mode=i".to_string())
+    );
+    assert_eq!(
+        l.exec("B 0x9405A f").unwrap(),
+        Some("B addr=9405a mode=f".to_string())
+    );
+    let p = std::env::temp_dir().join(format!("live_b_{}.f32", std::process::id()));
+    assert_eq!(
+        l.exec(&format!("B 0x9405A i {}", p.display())).unwrap(),
+        Some("B addr=9405a mode=i file".to_string())
+    );
+    assert!(p.exists(), "the side file is created");
+    let _ = std::fs::remove_file(&p);
+    assert!(l.handle("B 0x9405A i /no/such/dir/x").unwrap().starts_with("ERR"));
+    assert_eq!(l.exec("B 0").unwrap(), Some("B off".to_string()));
+    assert!(l.handle("B 5 q").unwrap().starts_with("ERR"));
+    assert!(l.handle("B").unwrap().starts_with("ERR"));
+}

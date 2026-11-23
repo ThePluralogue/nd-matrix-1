@@ -1,5 +1,6 @@
 //! Tests of `live_sy.rs` (the SY / SMP interrupt-driven pass model), split out to keep it under the
 //! module size rule.
+use super::live_bus::BusTap;
 use super::live_smp;
 use super::live_sy::STAGING_FIELD;
 use super::live_sy::*;
@@ -187,6 +188,47 @@ fn the_smp_model_uses_its_own_fifo_never_stages_and_taps_the_ring() {
     assert_eq!(w.len(), 2, "one stereo frame per interrupt");
     assert_eq!(f32::from_bits(w[0]), 0.5);
     assert_eq!(f32::from_bits(w[1]), -1.0);
+}
+
+#[test]
+fn the_bus_tap_replaces_the_ring_and_is_off_by_default() {
+    let mut c = core_with_rti_vectors();
+    c.dm_write(live_smp::FIFO_CAP, 4).unwrap();
+    c.dm_write(live_smp::RING_HALVES[0], 0.5f32.to_bits())
+        .unwrap();
+    c.dm_write(0x9_405A, 1 << 29).unwrap(); // 1.0 at 2^-29
+    c.dm_write(0x9_405B, (-(1i32 << 28)) as u32).unwrap(); // -0.5
+    let mut m = SyModel::smp(2);
+    assert_eq!(m.bus_tap, None, "off by default");
+    assert!(m.pass(&mut c).1);
+    assert_eq!(f32::from_bits(m.level_words()[0]), 0.5, "the ring is read");
+    m.bus_tap = BusTap::parse(0x9_405A, None).unwrap();
+    assert!(m.pass(&mut c).1);
+    let w: Vec<f32> = m.level_words().into_iter().map(f32::from_bits).collect();
+    assert_eq!(w, vec![1.0, -0.5, 1.0, -0.5], "two frames of the bus pair");
+    m.bus_tap = None;
+    assert!(m.pass(&mut c).1);
+    assert_eq!(f32::from_bits(m.level_words()[0]), 0.5, "back to the ring");
+}
+
+#[test]
+fn a_bus_side_file_gets_the_bus_frames_while_the_ring_tap_goes_on() {
+    let mut c = core_with_rti_vectors();
+    c.dm_write(live_smp::FIFO_CAP, 4).unwrap();
+    c.dm_write(live_smp::RING_HALVES[0], 0.5f32.to_bits())
+        .unwrap();
+    c.dm_write(0x9_405A, 1 << 29).unwrap();
+    let path = std::env::temp_dir().join(format!("bus_side_{}.f32", std::process::id()));
+    let mut m = SyModel::smp(2);
+    m.bus_tap = BusTap::parse(0x9_405A, None).unwrap();
+    m.bus_file = Some(std::fs::File::create(&path).unwrap());
+    assert!(m.pass(&mut c).1);
+    let side = std::fs::read(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(side.len(), 16, "two interrupts, one L R frame of 8 bytes each");
+    assert_eq!(f32::from_le_bytes(side[0..4].try_into().unwrap()), 1.0);
+    let ring: Vec<f32> = m.level_words().into_iter().map(f32::from_bits).collect();
+    assert_eq!(ring[0], 0.5, "the ring tap is unchanged");
 }
 
 #[test]

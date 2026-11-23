@@ -14,6 +14,7 @@
 //! | 3 | vector 17 is raised and run to its `RTI` | VERIFIED: one ISR is one stereo frame (`sy_voice_sine.scn`) |
 //!
 //! The frame is read back from the frame buffer word `DM(0x93590)` points at (default `0x932CA`).
+use super::live_bus::BusTap;
 use super::live_smp;
 use crate::core::Core;
 use std::collections::VecDeque;
@@ -82,6 +83,12 @@ pub struct SyModel {
     pub pace: usize,
     /// SMP ring tap: read the half the pointer does NOT hold on entry (`H 1`, OQ41 ring half test).
     pub other_half: bool,
+    /// Bus tap (`B ADDR`, D233): when set, the tapped frame is this DM bus pair instead of the
+    /// ring (SMP) or frame buffer (SY). `None` = off, the default.
+    pub bus_tap: Option<BusTap>,
+    /// Side file of the bus tap (`B ADDR MODE PATH`): the bus frames (f32 little endian L R) go
+    /// there and the ring tap goes on, so both are read in the same run.
+    pub bus_file: Option<std::fs::File>,
     queue: VecDeque<(u32, u32)>,
     staged: [bool; VOICES as usize],
     pub stats: SyStats,
@@ -162,6 +169,8 @@ impl SyModel {
             smp: false,
             pace: 0,
             other_half: false,
+            bus_tap: None,
+            bus_file: None,
             queue: VecDeque::new(),
             staged: [false; VOICES as usize],
             stats: SyStats::default(),
@@ -288,6 +297,21 @@ impl SyModel {
             &mut self.snaps,
         )?;
         self.stats.isrs += 1;
+        if let Some(tap) = self.bus_tap {
+            let bus = tap.frame(core);
+            match &mut self.bus_file {
+                Some(f) => {
+                    let bytes: Vec<u8> = bus.iter().flat_map(|w| w.to_le_bytes()).collect();
+                    if let Err(e) = std::io::Write::write_all(f, &bytes) {
+                        self.error.get_or_insert(format!("bus file: {e}"));
+                    }
+                }
+                None => {
+                    self.frames.push(bus);
+                    return Ok(steps);
+                }
+            }
+        }
         if self.smp {
             self.frames.extend(live_smp::ring_frames(core, half));
             return Ok(steps);
