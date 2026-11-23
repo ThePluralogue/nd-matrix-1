@@ -113,6 +113,16 @@ pub(super) fn counts_of_db(db: f32) -> f32 {
         .clamp(-60.0, 60.0)
 }
 
+/// Mid frequency index for the stage: `hint` (the file's exact index) while it still names `hz`,
+/// else the nearest display step ([`freq_index_of_hz`]). VERIFIED (D234): the file index is the
+/// `kAmpMidFreq` cell the firmware recalls; Hz alone cannot tell the repeated display steps apart.
+pub(super) fn freq_index(hz: f32, hint: Option<u8>) -> f32 {
+    match hint {
+        Some(i) if super::EQ_FREQ_HZ.get(usize::from(i)) == Some(&hz) => f32::from(i),
+        _ => freq_index_of_hz(hz),
+    }
+}
+
 /// Mid frequency index (`0..=127`) of a frequency in Hz: the nearest display step.
 pub(super) fn freq_index_of_hz(hz: f32) -> f32 {
     let target = hz.max(1.0).ln();
