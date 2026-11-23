@@ -76,6 +76,7 @@ impl Stage4Engine {
             fx.eq_bass_db = dec.eq_bass_db;
             fx.eq_mid_db = dec.eq_mid_db;
             fx.eq_mid_freq_hz = dec.eq_mid_freq_hz();
+            fx.eq_mid_freq_index = Some(dec.eq_mid_freq_index());
             fx.eq_treble_db = dec.eq_treble_db;
         } else {
             fx.amp_cabinet = AmpCabinet::Off;

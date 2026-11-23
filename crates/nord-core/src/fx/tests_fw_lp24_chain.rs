@@ -71,3 +71,20 @@ fn default_keeps_the_engine_path_and_other_amps_do_not_build_the_stage() {
     let _ = twin.process_frame([1.0, 1.0]);
     assert!(twin.fw_lp24.is_none());
 }
+
+/// D234: the table repeats 1000 Hz at indices 65 and 66; the program's exact index must reach the
+/// stage (a semitone of cutoff apart), and a stale index after a Hz edit is ignored.
+#[test]
+fn the_exact_mid_freq_index_reaches_the_stage() {
+    let run = |hint: Option<u8>, hz: f32| {
+        let mut fx = chain(AmpCabinet::LpFilter, LP24_ONLY);
+        fx.eq_mid_freq_hz = hz;
+        fx.eq_mid_freq_index = hint;
+        rms_db(&mut fx, 0.02)
+    };
+    let (a, b) = (run(Some(65), 1000.0), run(Some(66), 1000.0));
+    assert!((a - b).abs() > 0.05, "indices 65 / 66 sound alike: {a} {b}");
+    // No hint (GUI) and a stale hint fall back to the nearest step.
+    assert_eq!(run(None, 1000.0), run(Some(10), 1000.0));
+    assert_eq!(run(None, 1000.0), run(Some(65), 1000.0));
+}
