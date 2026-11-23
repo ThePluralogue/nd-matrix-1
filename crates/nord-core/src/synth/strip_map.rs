@@ -42,7 +42,7 @@ pub const DECAY_TAU_FRACTION: f32 = 0.18;
 /// attack time (`1 / b` passes) and the displayed 40 dB decay time (`ln 100 / (1 - a)` passes) of
 /// all 128 knobs give 1.998 / 2.001 frames at the median (range 1.90 .. 2.08, display rounding);
 /// checked by `python tools/synth_pass_period.py check` and the test
-/// `tests_pass_period::settled_tables_fit_two_frames_per_pass_on_every_knob` (D235). Earlier
+/// `tests_pass_period::settled_tables_fit_two_frames_per_pass_on_every_knob` (D237). Earlier
 /// check, equal at plateau starts only: `docs/research/synth-knob-laws.md` s3. Independent
 /// readout: the oracle oscillator advances `note / (2 F)` per stage sample, 4 samples per pass
 /// (261.59 Hz for note 60, -0.3 cent, `synth-e2e-oracle-vs-native.md`).

@@ -408,7 +408,7 @@ pub struct FirmwareOptions {
     /// record sustain 0.5, oracle envelope law, D210). Strip chain only.
     pub synth_fw_adr_law: bool,
     /// `--synth-settled-rates`: `SynthLayer::settled_rates` (the settled envelope rate tables on the
-    /// default strip chain, D212 / D235). Strip chain only.
+    /// default strip chain, D212 / D237). Strip chain only.
     pub synth_settled_rates: bool,
     /// `--synth-osc-env-morph`: `Stage4Engine::synth_osc_env_morph` (the Osc Env Amount morph of
     /// the synth layers is played, firmware law, D206; needs the firmware morph, on by default).

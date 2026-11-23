@@ -1,5 +1,5 @@
 //! The envelope pass period (`STRIP_PASS_FRAMES`) against the firmware display tables, all knobs
-//! (D235), and the opt-in `settled_rates` switch.
+//! (D237), and the opt-in `settled_rates` switch.
 
 use super::fw_env_settled::{settled_attack_coeff, settled_decay_release_coeff};
 use super::*;

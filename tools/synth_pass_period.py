@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Envelope pass period of the ORG core 2 chains, fitted on all 128 knobs (D235).
+"""Envelope pass period of the ORG core 2 chains, fitted on all 128 knobs (D237).
 
 A pass is the control step of the amp / filter / osc ADR chains (one record step, D210 / D212). Its
 length in DSP frames `P` follows from two firmware tables that need no oracle run:

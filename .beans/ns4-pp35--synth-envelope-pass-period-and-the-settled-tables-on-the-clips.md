@@ -1,6 +1,6 @@
 ---
 # ns4-pp35
-title: 'Synth envelope pass period and the settled tables on the hardware clips (D235)'
+title: 'Synth envelope pass period and the settled tables on the hardware clips (D237)'
 status: completed
 type: task
 created_at: 2026-11-23T00:00:00Z
@@ -20,10 +20,10 @@ D212 committed the settled attack and decay / release tables; D223 kept them opt
 - [x] Opt-in `--synth-settled-rates`; default and `render_hash` unchanged
 - [x] 17 clip segments scored before and after, plus the combinations with `--synth-fw-adr-law` and `--synth-fw-env-law` (`synth-env-pass-period-clips.csv`)
 - [x] Flip proposal stated: no flip (8 of 17 segments worse)
-- [x] Research note, D235, spec `synth-engine.md` 4.8, ROADMAP
+- [x] Research note, D237, spec `synth-engine.md` 4.8, ROADMAP
 
 ## Out of Scope
 Flipping `DEFAULT_TABLES`; fixing the envelope to cutoff level link of the firmware cutoff law; the `super_lp24_oopad` brightness gap; re-fitting `DECAY_TAU_FRACTION`.
 
 ## Summary of Changes
-`strip_map.rs` (`*_with` inverse functions, tag), `strip_path.rs`, `fw_adr_law.rs`, `synth/mod.rs` (`settled_rates`), `render_opts.rs` (`--synth-settled-rates`), `tests_pass_period.rs`, `tools/synth_pass_period.py`, data CSVs, `docs/research/synth-env-pass-period.md`, D235, spec and ROADMAP. Result: the pass period and tables are one verified pair; the clip regressions come from the envelope to cutoff path, so the flip waits for that fix.
+`strip_map.rs` (`*_with` inverse functions, tag), `strip_path.rs`, `fw_adr_law.rs`, `synth/mod.rs` (`settled_rates`), `render_opts.rs` (`--synth-settled-rates`), `tests_pass_period.rs`, `tools/synth_pass_period.py`, data CSVs, `docs/research/synth-env-pass-period.md`, D237, spec and ROADMAP. Result: the pass period and tables are one verified pair; the clip regressions come from the envelope to cutoff path, so the flip waits for that fix.

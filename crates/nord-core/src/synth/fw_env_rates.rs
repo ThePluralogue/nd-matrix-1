@@ -116,8 +116,8 @@ pub const SETTLED_TABLES: RateTables = RateTables {
 };
 
 /// Tables of the default strip chain. `LEGACY_TABLES` stays the default: the settled tables are
-/// VERIFIED (D212) and the 2 frame pass they imply is VERIFIED (D235), but 8 of 17 hardware clips
-/// score worse with them on the default chain (D235, `docs/research/synth-env-pass-period.md`).
+/// VERIFIED (D212) and the 2 frame pass they imply is VERIFIED (D237), but 8 of 17 hardware clips
+/// score worse with them on the default chain (D237, `docs/research/synth-env-pass-period.md`).
 /// Opt-in: `--synth-settled-rates` (`SynthLayer::settled_rates`) or `--synth-fw-adr-law`.
 pub const DEFAULT_TABLES: RateTables = LEGACY_TABLES;
 

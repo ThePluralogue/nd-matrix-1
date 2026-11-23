@@ -1,4 +1,4 @@
-"""Tests for `tools/synth_pass_period.py` (D235)."""
+"""Tests for `tools/synth_pass_period.py` (D237)."""
 
 import math
 

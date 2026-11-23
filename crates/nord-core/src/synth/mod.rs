@@ -355,7 +355,7 @@ pub struct SynthLayer {
     /// the amp attack index of a negative word is scaled by `g / 127` (key byte `g`) per voice and
     /// the decay records of both chains stop at the sustain level 0.5. Strip chain only.
     pub fw_adr_law: bool,
-    /// Opt-in (default off, `--synth-settled-rates`, D235): the strip chain reads the settled rate
+    /// Opt-in (default off, `--synth-settled-rates`, D237): the strip chain reads the settled rate
     /// tables (`fw_env_settled.rs`) without the rest of `fw_adr_law`.
     pub settled_rates: bool,
     /// Strip chain only, opt-in (default off, `--synth-stage3`): a `filter_raw3` layer runs the
