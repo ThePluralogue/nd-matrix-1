@@ -753,6 +753,10 @@ wrote {}",
         }
         return Ok(());
     }
+    // opt-in `--engine lle` (D2/D119): a fallback to the built-in engine prints why, never fatal
+    let engine = nord_core::engine_select::startup("nd-matrix-1", &argv);
+    // `--precision exact|fast` (LLE only): plumbed to the backend seam, ignored by HLE
+    let _engine = nord_core::precision::apply_startup("nd-matrix-1", &argv, engine);
     let cli = parse_cli_args(argv);
 
     let mut viewport = egui::ViewportBuilder::default()
