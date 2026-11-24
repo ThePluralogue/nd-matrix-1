@@ -150,6 +150,12 @@ fn k{id}(core: &mut Core) {{ core.aot_pe_both(ComputeOp::{c:?}, Kern::{kern}); }
                                     e.next
                                 );
                             }
+                            Chk::Slow => {
+                                let _ = writeln!(
+                                    body,
+                                    "    if core.aot_slow {{ core.aot_slow = false; if core.aot_sig_changed(&sig) {{ return Ok(true); }} }}"
+                                );
+                            }
                             Chk::Sig => {
                                 let _ = writeln!(
                                     body,

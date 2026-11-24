@@ -234,6 +234,11 @@ impl MemXfer {
         }
     }
 
+    /// Whether this transfer is a store to data memory.
+    pub(super) fn is_store(&self) -> bool {
+        matches!(self.data, Data::Reg { write: true, .. } | Data::Imm(_))
+    }
+
     /// Whether executing this transfer may change state the block guard assumes constant.
     pub(super) fn may_change_guard(&self) -> bool {
         match self.data {
@@ -310,6 +315,7 @@ impl Core {
             }
             Ok(())
         } else {
+            self.aot_slow = true;
             self.dm_write(addr, v)
         }
     }
@@ -609,6 +615,33 @@ mod tests {
         same_as_interpreter(&[0x753e, 0x93bf], "T5 M7 = S1");
         same_as_interpreter(&[0x023e, 0x0032, 0x1fa0], "T6n R10 = BTGL R0 BY 31");
         same_as_interpreter(&[0x013e, 0x0000, 0x1312], "T2 R3 = R1 + R2");
+    }
+
+    #[test]
+    fn only_a_store_outside_the_sram_raises_the_slow_flag() {
+        let mut c = core_at_zero(&[0x0001]);
+        c.aot_wr(0x9_1000, 5).unwrap();
+        assert!(!c.aot_slow, "internal SRAM store");
+        c.aot_wr(0x3_E018, 7).unwrap();
+        assert!(c.aot_slow, "IOP store");
+        let st = MemXfer {
+            ii: 0,
+            addr: Addr::Direct(0x9_1000),
+            data: Data::Reg {
+                ureg: 0,
+                write: true,
+            },
+            compute: None,
+        };
+        assert!(st.is_store());
+        assert!(!MemXfer {
+            data: Data::Reg {
+                ureg: 0,
+                write: false
+            },
+            ..st
+        }
+        .is_store());
     }
 
     #[test]
