@@ -42,6 +42,8 @@ def test_stage_windows_inno_layout_and_iss(tmp_path):
     assert "ignoreversion" in next(
         line for line in iss.splitlines() if "THIRD_PARTY_LICENSES.html" in line
     )
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert f"\\{name}" in iss
 
     stage_dir = work_dir / "win-inno-stage"
     assert (stage_dir / "ns4.exe").exists()
@@ -52,6 +54,8 @@ def test_stage_windows_inno_layout_and_iss(tmp_path):
     ).exists()
     assert not (stage_dir / "stray.ns4b").exists()
     assert (stage_dir / "THIRD_PARTY_LICENSES.html").exists()
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert (stage_dir / name).exists()
 
 
 def test_stage_linux_deb_layout_and_control(tmp_path):
@@ -85,6 +89,8 @@ def test_stage_linux_deb_layout_and_control(tmp_path):
     assert (doc_dir / "LICENSE-PLUGIN").exists()
     assert (doc_dir / "LICENSE").exists()
     assert (doc_dir / "THIRD_PARTY_LICENSES.html").read_text(encoding="utf-8") == NOTICES_OK
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert (doc_dir / name).exists()
 
 
 def test_stage_linux_appdir(tmp_path):
@@ -101,6 +107,8 @@ def test_stage_linux_appdir(tmp_path):
     doc_dir = appdir / "usr" / "share" / "doc" / "nd-matrix-1"
     assert (doc_dir / "LICENSE").exists()
     assert (doc_dir / "THIRD_PARTY_LICENSES.html").exists()
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert (doc_dir / name).exists()
     assert (appdir / "usr" / "lib" / "clap" / "nd-matrix-1.clap").exists()
     assert (
         appdir
@@ -136,6 +144,8 @@ def test_stage_macos_dmg_and_app_bundle(tmp_path):
     assert (dmg_stage / "ns4").exists()
     assert (dmg_stage / "LICENSE-PLUGIN").exists()
     assert (dmg_stage / "THIRD_PARTY_LICENSES.html").exists()
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert (dmg_stage / name).exists()
 
 
 def test_stage_macos_pkg_roots_and_distribution_xml(tmp_path):
@@ -148,7 +158,11 @@ def test_stage_macos_pkg_roots_and_distribution_xml(tmp_path):
     assert (paths["app_root"] / "usr" / "local" / "bin" / "ns4").exists()
     app_doc = paths["app_root"] / "usr" / "local" / "share" / "doc" / "nd-matrix-1"
     assert (app_doc / "THIRD_PARTY_LICENSES.html").exists()
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert (app_doc / name).exists()
     assert (app_doc / "LICENSE").exists()
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert (paths["resources"] / name).exists()
     assert (paths["resources"] / "THIRD_PARTY_LICENSES.html").read_text(
         encoding="utf-8"
     ) == NOTICES_OK

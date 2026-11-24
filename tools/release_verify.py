@@ -11,7 +11,8 @@ Checks, with no third-party dependencies and no need for `dumpbin`/`nm`:
    in the VST3 module. PE files (Windows) get a real export-table parse; ELF and
    Mach-O modules are checked by symbol-name search in the file image.
 4. `<archive>.sha256` matches the archive and uses LF line endings.
-5. `THIRD_PARTY_LICENSES.html` is present and is a real notices listing (D238).
+5. `ADDITIONAL-PERMISSIONS.md` and `TRADEMARKS.md` are present (D241).
+6. `THIRD_PARTY_LICENSES.html` is present and is a real notices listing (D238).
 
 Usage: python tools/release_verify.py <archive> [--target <rust triple>]
 Exit status 0 when clean, 1 with one problem per line on stderr otherwise.
@@ -26,7 +27,15 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from release_package import BINS, PLATFORMS, PLUGIN_STEM, THIRD_PARTY_NOTICES, Platform, sha256_hex
+from release_package import (
+    BINS,
+    LEGAL_NOTICES,
+    PLATFORMS,
+    PLUGIN_STEM,
+    THIRD_PARTY_NOTICES,
+    Platform,
+    sha256_hex,
+)
 
 FORBIDDEN_PARTS = frozenset(
     {
@@ -86,6 +95,7 @@ def expected_files(platform: Platform) -> list[str]:
         "README.txt",
         "HOST_COMPATIBILITY.md",
         THIRD_PARTY_NOTICES,
+        *LEGAL_NOTICES,
     ]
     vst3 = f"{PLUGIN_STEM}.vst3/{platform.vst3_binary}"
     if platform.os == "macos":
