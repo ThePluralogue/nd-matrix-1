@@ -64,18 +64,49 @@ pub trait LleInput {
     /// Applies one event (the engine writes it into the ARM0 input queues). Real-time safe.
     fn handle_event(&mut self, event: LleEvent);
 
-    /// Applies up to [`MAX_EVENTS_PER_DRAIN`] queued events in order; returns how many.
+    /// Applies up to [`MAX_EVENTS_PER_DRAIN`] queued events in order; returns how many queued
+    /// events it consumed.
+    ///
+    /// A full ring rejects the newest event (`NoteOff` and pedal release included), which would
+    /// leave notes hanging. Once the queue is empty, if the producer lost events since the last
+    /// drain, [`Self::resync_after_drop`] runs (after the queued events, so a surviving `NoteOn`
+    /// is cut rather than a lost `NoteOff` left sounding).
     fn drain(&mut self, rx: &mut EventConsumer) -> usize {
         let mut n = 0;
         while n < MAX_EVENTS_PER_DRAIN {
             match rx.pop() {
                 Some(LleEvent::Nop) => {}
                 Some(e) => self.handle_event(e),
-                None => break,
+                None => {
+                    if rx.take_new_drops() > 0 {
+                        self.resync_after_drop();
+                    }
+                    break;
+                }
             }
             n += 1;
         }
         n
+    }
+
+    /// Releases everything a dropped event may have left held: all-notes-off and sustain /
+    /// sostenuto / soft pedal up on all 16 channels. The continuous control pedal is left alone
+    /// (it has no "release"). Override if the engine has a cheaper panic path.
+    fn resync_after_drop(&mut self) {
+        for channel in 0..16 {
+            self.handle_event(LleEvent::ControlChange {
+                channel,
+                controller: crate::midi::cc::ALL_NOTES_OFF,
+                value: 0,
+            });
+            for pedal in [Pedal::Sustain, Pedal::Sostenuto, Pedal::Soft] {
+                self.handle_event(LleEvent::Pedal {
+                    channel,
+                    pedal,
+                    value: 0,
+                });
+            }
+        }
     }
 }
 
@@ -120,7 +151,7 @@ mod tests {
         let notes = [
             midi_bytes(&[0x90, 60, 100]).unwrap(),
             midi_bytes(&[0xB0, 64, 127]).unwrap(),
-            panel_edit(PanelKind::Button, 21, 1.0),
+            panel_edit(PanelKind::Button, 21, 1.0).unwrap(),
         ];
         for e in notes {
             assert!(host.events.push(e));
@@ -144,6 +175,49 @@ mod tests {
         let mut m = Mock::default();
         assert_eq!(m.drain(&mut eng.events), MAX_EVENTS_PER_DRAIN);
         assert_eq!(m.drain(&mut eng.events), 10);
+    }
+
+    /// A full ring drops the NoteOff; the engine must be told to release instead of hanging.
+    #[test]
+    fn a_dropped_event_triggers_one_resync_all_notes_and_pedals_off() {
+        let (mut host, mut eng) = link(2);
+        let on = |note| LleEvent::NoteOn {
+            channel: 0,
+            note,
+            velocity: 100,
+        };
+        assert!(host.events.push(on(60)) && host.events.push(on(64)));
+        let off = LleEvent::NoteOff {
+            channel: 0,
+            note: 60,
+            velocity: 0,
+        };
+        assert!(!host.events.push(off), "ring full: the NoteOff is lost");
+        let mut m = Mock::default();
+        assert_eq!(m.drain(&mut eng.events), 2);
+        assert_eq!(&m.seen[..2], &[on(60), on(64)]);
+        let tail = &m.seen[2..];
+        assert_eq!(tail.len(), 16 * 4);
+        assert!(tail.contains(&LleEvent::ControlChange {
+            channel: 15,
+            controller: crate::midi::cc::ALL_NOTES_OFF,
+            value: 0
+        }));
+        assert!(tail.contains(&LleEvent::Pedal {
+            channel: 0,
+            pedal: Pedal::Sustain,
+            value: 0
+        }));
+        assert!(!tail.iter().any(|e| matches!(
+            e,
+            LleEvent::Pedal {
+                pedal: Pedal::Control,
+                ..
+            }
+        )));
+        let before = m.seen.len();
+        assert_eq!(m.drain(&mut eng.events), 0);
+        assert_eq!(m.seen.len(), before, "one resync per loss, not per drain");
     }
 
     #[test]

@@ -5,6 +5,11 @@
 //! operations: no allocation, no lock, no syscall, no loop. The split into [`Producer`] and
 //! [`Consumer`] (both `&mut self`, neither `Clone`) makes the single-producer / single-consumer
 //! contract a compile-time property.
+//!
+//! **Overflow policy:** a full ring rejects the *newest* item and counts it ([`Producer::dropped`]).
+//! A rejected `NoteOff` or pedal release would leave a note hanging, so the consumer can detect new
+//! drops with [`Consumer::take_new_drops`] and resynchronise (see `LleInput::drain`, which injects
+//! all-notes-off and pedal-off).
 
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -37,6 +42,8 @@ pub struct Producer<T: Wire> {
 /// Consumer end (engine thread).
 pub struct Consumer<T: Wire> {
     shared: Arc<Shared>,
+    /// `dropped` value at the last [`Consumer::take_new_drops`]; consumer-local, no atomics.
+    seen_dropped: u32,
     _t: PhantomData<fn() -> T>,
 }
 
@@ -60,6 +67,7 @@ pub fn channel<T: Wire>(capacity: usize) -> (Producer<T>, Consumer<T>) {
         },
         Consumer {
             shared,
+            seen_dropped: 0,
             _t: PhantomData,
         },
     )
@@ -143,6 +151,14 @@ impl<T: Wire> Consumer<T> {
     pub fn dropped(&self) -> u32 {
         self.shared.dropped.load(Ordering::Relaxed)
     }
+
+    /// Drops since the previous call (wrapping); `0` when nothing was lost. Wait-free.
+    pub fn take_new_drops(&mut self) -> u32 {
+        let now = self.shared.dropped.load(Ordering::Relaxed);
+        let new = now.wrapping_sub(self.seen_dropped);
+        self.seen_dropped = now;
+        new
+    }
 }
 
 #[cfg(test)]
@@ -196,6 +212,19 @@ mod tests {
         assert_eq!((p.dropped(), c.dropped()), (1, 1));
         assert_eq!(c.pop(), Some(Item(0)));
         assert!(p.push(Item(4)), "a freed slot is reusable");
+    }
+
+    #[test]
+    fn take_new_drops_reports_each_loss_once() {
+        let (mut p, mut c) = channel::<Item>(2);
+        assert_eq!(c.take_new_drops(), 0);
+        assert!(p.push(Item(1)) && p.push(Item(2)));
+        assert!(!p.push(Item(3)) && !p.push(Item(4)));
+        assert_eq!(c.take_new_drops(), 2);
+        assert_eq!(c.take_new_drops(), 0);
+        assert!(c.pop().is_some() && c.pop().is_some());
+        assert!(p.push(Item(5)) && p.push(Item(6)) && !p.push(Item(7)));
+        assert_eq!(c.take_new_drops(), 1);
     }
 
     #[test]

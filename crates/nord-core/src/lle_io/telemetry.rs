@@ -30,8 +30,12 @@ pub const WORDS: usize = OLED_COUNT * OLED_BYTES / 4 + LED_WORDS + 2;
 /// One consistent view of the emulated panel outputs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TelemetrySnapshot {
-    /// Framebuffers as the controller RAM holds them (byte layout is the engine's; ASSUMED SSD1309
-    /// page order: byte = 8 vertical pixels of one column).
+    /// Framebuffers as the controller RAM holds them: byte `page * 128 + x`, bit `i` (LSB first)
+    /// = row `page * 8 + i`.
+    /// VERIFIED: the firmware flush `0xC0076924` sends 1024 bytes from `[display + 0x18]` in this
+    /// order and every draw routine uses it, `docs/research/arm-oled-render.md` s2.3, checked by
+    /// `tools/arm_panel.py capture` (the Rust test `led_bits_and_oled_pixels` only proves our
+    /// accessor matches this layout). ASSUMED: the glass shows RAM upright (same note, s2.3).
     pub oled: [[u8; OLED_BYTES]; OLED_COUNT],
     /// LED bit map (bit `n` of the flat array = LED `n`).
     pub leds: [u32; LED_WORDS],
@@ -72,7 +76,7 @@ impl TelemetrySnapshot {
         }
     }
 
-    /// Pixel `(x, y)` of OLED `which` under the assumed page layout (`false` out of range).
+    /// RAM pixel `(x, y)` of OLED `which` under the page layout above (`false` out of range).
     pub fn oled_pixel(&self, which: usize, x: usize, y: usize) -> bool {
         if which >= OLED_COUNT || x >= 128 || y >= 64 {
             return false;

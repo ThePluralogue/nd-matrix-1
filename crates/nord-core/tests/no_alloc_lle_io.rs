@@ -83,7 +83,9 @@ fn ring_translate_and_telemetry_do_not_allocate() {
                     assert!(host.events.push(e));
                 }
             }
-            assert!(host.events.push(panel_edit(PanelKind::Knob, 5, 0.25)));
+            assert!(host
+                .events
+                .push(panel_edit(PanelKind::Knob, 5, 0.25).unwrap()));
             let mut n = 0;
             while let Some(e) = eng.events.pop() {
                 assert_ne!(e, LleEvent::Nop);

@@ -8,8 +8,11 @@
 use std::sync::atomic::{fence, AtomicU32, Ordering};
 
 /// Reader retry budget before giving up for this call.
-/// ASSUMED: the writer holds the odd sequence for a few hundred relaxed stores; 64 attempts is the
-/// value `TelemetryCell` uses and it never starved in its stress test.
+/// ASSUMED: carried over from `TelemetryCell` (34 words), where it never starved. This cell can be
+/// ~530 words (LLE telemetry), so a write window is ~15x longer and a reader may overlap it more
+/// often: [`SeqCell::read`] may return `false` under load, and callers must keep the previous
+/// snapshot and retry next frame. On a loaded Windows CI runner a 300 ms stress test still got
+/// hundreds of consistent reads (PR #650 run, 749), so starvation is rare, not impossible.
 const MAX_ATTEMPTS: usize = 64;
 
 /// Seqlock cell of `W` words. Exactly one thread may call [`Self::publish`].
@@ -45,7 +48,9 @@ impl<const W: usize> SeqCell<W> {
         self.seq.store(s.wrapping_add(2), Ordering::Release); // even: stable
     }
 
-    /// Number of completed publishes (wraps).
+    /// Number of completed publishes. The sequence is a `u32` counted twice per publish, so this
+    /// wraps after 2^31 publishes (about 4 years at 60 per second); a publish whose
+    /// sequence lands exactly on `0` reads as "never published" until the next publish.
     pub fn publishes(&self) -> u32 {
         self.seq.load(Ordering::Relaxed) / 2
     }

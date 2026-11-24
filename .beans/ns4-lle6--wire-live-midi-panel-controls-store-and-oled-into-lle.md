@@ -18,7 +18,7 @@ To be playable as an instrument, the unified LLE engine (`ns4-lle5`) needs live 
 A musician can play the LLE engine live from a MIDI keyboard and the ND Matrix 1 panel UI, switch programs from their `.ns4b` backup, and see the real firmware OLED screens and LEDs respond in real time.
 
 ## Acceptance Criteria
-- [ ] (neutral half done: `lle_io` rings, events, `LleInput`; ARM0 queue injection blocked on `ns4-lle5`) Inject live MIDI (note on/off, velocity, aftertouch, CC, pitch bend, program change) into ARM0 input queues with lock-free ring buffers
+- [ ] (neutral half done: `lle_io` rings, events, `LleInput`; ARM0 queue injection blocked on `ns4-lle5`) Inject live MIDI (note on/off, velocity, channel aftertouch, CC, pitch bend, program change) into ARM0 input queues with lock-free ring buffers
 - [ ] (neutral half done: `PanelEvent`, `panel_edit`; ARM0 wiring blocked on `ns4-lle5`) Map ND Matrix 1 panel knob/button/drawbar edits to ARM0 panel input events
 - [ ] Populate the ARM0 program store from the user's `.ns4b` backup (`ns4-pyqg`)
 - [ ] (neutral half done: `TelemetrySnapshot` seqlock channel, `LleTelemetry`; real data blocked on `ns4-lle5`) Stream real firmware OLED framebuffers (`ns4-2gdc`) and LED states back to the GUI via lock-free telemetry
