@@ -20,7 +20,7 @@ Run a routine of the FX, PNO, ORG, SY1SY2 or SMP image on test vectors and compa
 - Register file: `R0..R15` / `F0..F15` (PEx) and `S0..S15` (PEy, SIMD), 40-bit data with the float extension, `MRF/MRB/MSF/MSB` multiplier accumulators.
 - Data address generators: `I0..I15`, `M0..M15`, `L0..L15`, `B0..B15` (circular buffers, bit-reverse), pre-modify and post-modify addressing.
 - Sequencer: `PC`, PC stack, loop stack (`LCNTR`, `CURLCNTR`, `DO ... UNTIL LCE`), delayed branches, status stack, `MODE1`, `MODE2`, `ASTAT`, `STKY`, `USTAT1..4`, `IMASK`, `MMASK`, `IRPTL`.
-- Memory: four internal SRAM blocks as one byte array with short-word, normal-word (32-bit) and instruction-word (48-bit) views; the external SDRAM window (`0x20xxxxxx` loader addresses) as a plain array until its mapping is known.
+- Memory: four internal SRAM blocks as one byte array with short-word, normal-word (32-bit) and instruction-word (48-bit) views; the external delay-line window (`0x20xxxxxx` loader addresses, `0x0800_0000` data addresses) as a dense word array (`core/sdram.rs`).
 
 ## 4. Instruction scope (from the census)
 
@@ -52,7 +52,7 @@ Instruction decoding for all used forms is a prerequisite. `tools/sharc_visa.py`
 - Long-word accesses: `Rn = DM(..) (LW)` / `DM(..) = Rn (LW)` move the register pair `Rn, Rn+1` (VERIFIED against ADI elfdump, `core/longword.rs`); the SY1SY2 frame clear and 64-bit voice masks depend on it. SIMD + LW and Type 4 forms are not modelled (`docs/research/sy-smp-audio.md` section 6).
 - Interrupt-driven scenarios: `sharc-ref` raises vectors through the interrupt controller (`irq`) and feeds the SY/SMP command FIFO (`msg`), so the audio ISR runs with the firmware's own register banks (`docs/research/sy-smp-audio.md`).
 - ISA mode: with an ISA image loaded, a `pc` below `0x100000` is an ISA word address, above it VISA short words; interrupt vectors come from the ISA table at `0x8C000 + 4 * vector`; the data window `0x100000..0x1FFFFF` is 16-bit short words of the same memory.
-- External memory: delay and reverb lines live in the SDRAM window whose address mapping is still open (`dsp-image-hunt.md` 5.18).
+- External memory: delay and reverb lines live in the window `0x0800_0000..0x0804_0000` (normal-word addresses; loader byte address `0x2000_0000 + 4 * (w - 0x0800_0000)`, VERIFIED on the FX Core1/Core2 zero blocks), modelled as a dense 1 MiB word store (`core/sdram.rs`, always on, counters `sdram_reads` / `sdram_writes`, [sharc-sdram-window](../research/sharc-sdram-window.md)). The physical part and latency are not modelled (ASSUMED plain memory).
 - Provenance: the oracle is only as good as the decoding; every newly decoded field needs a test that fails without it.
 
 ## 7. Minimal system run (D119, proposed, opt-in)
