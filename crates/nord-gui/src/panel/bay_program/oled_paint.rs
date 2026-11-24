@@ -195,10 +195,10 @@ pub fn paint(painter: &Painter, rect: Rect, text: &OledText, dim: bool) {
             ],
             Stroke::new(0.5_f32, fg),
         );
-        // B3 drawbars as mini bars (firmware bar font), hanging from the rule at the right of the
-        // organ row. EMPIRICAL: measured on a unit photo (rule y = 33, bars from y = 34 down,
-        // right edge at x = 121); the photo shows more bars than nine (both organ layers?), not
-        // modelled.
+        // B3 drawbars as mini bars (firmware bar font), hanging from the rule. VERIFIED by the ARM
+        // pixel check (`oled_arm_check`, 0 differing pixels): the firmware draws the nine bars
+        // from x = 64, y = 34 (rule + 1). The unit photo suggested a right edge at x = 121 with
+        // more bars; that is not what the firmware draws for a nine-digit string.
         if let (Some(bars), Some(face)) = (
             text.bars,
             nord_core::oled_font::font(nord_core::oled_font::BAR_FONT_INDEX),
@@ -206,8 +206,8 @@ pub fn paint(painter: &Painter, rect: Rect, text: &OledText, dim: bool) {
             oled_text::draw_with(
                 painter,
                 Some(&face),
-                pos2(rect.left() + 121.0 * cell, top + g.rule_y + cell),
-                Align2::RIGHT_TOP,
+                pos2(rect.left() + 64.0 * cell, top + g.rule_y + cell),
+                Align2::LEFT_TOP,
                 &super::oled_home::bar_chars(&bars),
                 f_row,
                 cell,

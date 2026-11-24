@@ -133,7 +133,9 @@ fn local_data(name: &str) -> Option<Frame> {
     if nord_core::oled_font::install_from_env().ok()? == 0 {
         return None;
     }
-    let file = if name.starts_with("home") {
+    let file = if name == "bars" {
+        "bars/press/press_d0.txt"
+    } else if name.starts_with("home") {
         "icons/press/press_d0.txt"
     } else {
         "syn/press/press_d1.txt"
@@ -172,6 +174,8 @@ fn the_home_screen_matches_the_arm_frame() {
         ("organ icon", (0, 36, 9, 45)),
         ("piano row", (0, 45, W, 55)),
         ("synth icon", (0, 55, 9, 64)),
+        // not the whole frame: here the firmware hides the `B3` / `Pure Saw` / bar widgets (no
+        // sound loaded), which the next test forces visible and compares in full
     ];
     let mut bad = Vec::new();
     for (n, r) in regions {
@@ -183,6 +187,52 @@ fn the_home_screen_matches_the_arm_frame() {
     }
     if !bad.is_empty() {
         eprintln!("{}", show_diff(&ours, &arm, 0..64));
+    }
+    assert!(bad.is_empty(), "differs from the ARM frame: {bad:?}");
+}
+
+/// The home screen with every section row visible (organ `B3` with its drawbar bars, the missing
+/// piano, `Pure Saw`). The harness has no sound loaded, so the firmware hides the `B3`, `Pure Saw`
+/// and bar widgets; `tools/arm_screens.py press --show-all` sets their visible flag
+/// (`[widget + 0x20]`) from the set-text hook so that the firmware draws them itself.
+#[test]
+fn the_home_screen_with_the_bars_matches_the_arm_frame() {
+    let Some(arm) = local_data("bars") else {
+        eprintln!("SKIPPED bars: NS4_OLED_FRAMES / NS4_WAVE_TABLES or no bars frame");
+        return;
+    };
+    let ui = ProgramUi {
+        title: "<empty>".into(),
+        ..Default::default()
+    };
+    let sum = Summary {
+        organ: "B3".into(),
+        piano: String::new(),
+        synth: "Pure Saw".into(),
+        layers_on: [true, false, true, false, true, false, false],
+        organ_bars: Some([8, 8, 8, 8, 0, 0, 0, 0, 0]),
+        ..Default::default()
+    };
+    let text = compose(&ui, &sum);
+    let ours = raster(|p, rect| oled_paint::paint(p, rect, &text, false));
+    let regions = [
+        ("title and name", (0, 0, W, 33)),
+        ("organ row text", (9, 35, 64, 45)),
+        ("drawbar bars", (64, 34, W, 45)),
+        ("piano row", (0, 45, W, 55)),
+        ("synth row", (0, 55, W, 64)),
+        ("whole frame", (0, 0, W, H)),
+    ];
+    let mut bad = Vec::new();
+    for (n, r) in regions {
+        let d = diff(&ours, &arm, r);
+        eprintln!("bars {n}: {d} differing pixels");
+        if d > 0 {
+            bad.push((n, d));
+        }
+    }
+    if !bad.is_empty() {
+        eprintln!("{}", show_diff(&ours, &arm, 30..64));
     }
     assert!(bad.is_empty(), "differs from the ARM frame: {bad:?}");
 }
@@ -224,6 +274,7 @@ fn the_synth_waveform_page_matches_the_arm_frame() {
         ("picture", (86, 26, W, 48)),
         ("values", (0, 48, W, 56)),
         ("tabs", (0, 56, W, 64)),
+        ("whole frame", (0, 0, W, H)),
     ];
     let mut bad = Vec::new();
     for (n, r) in regions {
