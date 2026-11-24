@@ -1,7 +1,8 @@
-//! Per-user remembered choices for the front ends (D129): only the **path** of the user's Nord OS
-//! update file, in `<config dir>/ns4/config.json`. The firmware and the tables read from it are
-//! never stored (D22). Libraries and tests never read this file: only the `ns4` and `nd-matrix-1`
-//! binaries call [`apply_saved_default`] once at start-up.
+//! Per-user remembered choices for the front ends (D129): the **path** of the user's Nord OS
+//! update file and the GUI text size (percent), in `<config dir>/ns4/config.json`. The firmware and
+//! the tables read from it are never stored (D22). Library code and tests never read this file on
+//! their own: the `ns4` and `nd-matrix-1` binaries call [`apply_saved_default`] once at start-up,
+//! and the front ends load the text size once when a window opens (`nord_gui::text_scale`).
 //!
 //! Precedence for the WAVE-bank source, first match wins: `--synth-wave-tables PATH`, then
 //! `NS4_WAVE_TABLES`, then this file, then the placeholder table. The flag already wins inside
@@ -18,6 +19,10 @@ pub struct UserConfig {
     /// Path of the user's Nord OS update file (`.exe`, `.dmg`, `.zip` or extracted container).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub os_update_path: Option<String>,
+    /// Text size of the front ends in percent (100 to 200), `nord_gui::text_scale` (issue #592).
+    /// Absent means 100. The front ends clamp and snap it; this file only stores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_scale_percent: Option<u32>,
 }
 
 /// Config directory for the given platform inputs (pure, for tests): Windows `%APPDATA%`, macOS
@@ -187,11 +192,30 @@ mod tests {
         assert_eq!(load(&path).unwrap(), UserConfig::default());
         let cfg = UserConfig {
             os_update_path: Some("C:/dl/Update.exe".into()),
+            ..Default::default()
         };
         save(&path, &cfg).unwrap();
         assert_eq!(load(&path).unwrap(), cfg);
         std::fs::write(&path, "{ not json").unwrap();
         assert!(load(&path).unwrap_err().contains("config.json"));
+    }
+
+    #[test]
+    fn the_text_size_round_trips_and_an_old_file_without_it_still_loads() {
+        let path = tmp("textscale");
+        let cfg = UserConfig {
+            text_scale_percent: Some(150),
+            ..Default::default()
+        };
+        save(&path, &cfg).unwrap();
+        assert_eq!(load(&path).unwrap().text_scale_percent, Some(150));
+        assert!(!std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("os_update_path"));
+        std::fs::write(&path, r#"{ "os_update_path": "C:/a.exe" }"#).unwrap();
+        let old = load(&path).unwrap();
+        assert_eq!(old.text_scale_percent, None);
+        assert_eq!(old.os_update_path.as_deref(), Some("C:/a.exe"));
     }
 
     #[test]
@@ -201,6 +225,7 @@ mod tests {
             &path,
             &UserConfig {
                 os_update_path: Some("/saved/os.exe".into()),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -252,6 +277,7 @@ mod tests {
         let _ = std::fs::remove_file(&gone);
         let cfg = UserConfig {
             os_update_path: Some(gone.display().to_string()),
+            ..Default::default()
         };
         save(&path, &cfg).unwrap();
         let r = resolve_saved(None, &path, crate::firmware_setting::check);
@@ -277,6 +303,7 @@ mod tests {
             &path,
             &UserConfig {
                 os_update_path: Some(img.display().to_string()),
+                ..Default::default()
             },
         )
         .unwrap();

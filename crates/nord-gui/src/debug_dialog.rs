@@ -151,8 +151,17 @@ fn shadcn_card(ui: &mut Ui, title: &str, subtitle: &str, body: impl FnOnce(&mut 
         .inner_margin(Margin::same(14))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            ui.label(RichText::new(title).size(13.0).strong().color(ZINC_50));
-            ui.label(RichText::new(subtitle).size(11.0).color(ZINC_400));
+            ui.label(
+                RichText::new(title)
+                    .size(crate::text_scale::px(13.0))
+                    .strong()
+                    .color(ZINC_50),
+            );
+            ui.label(
+                RichText::new(subtitle)
+                    .size(crate::text_scale::px(11.0))
+                    .color(ZINC_400),
+            );
             ui.add_space(8.0);
             body(ui);
         });
@@ -228,7 +237,7 @@ fn render_dialog_contents(
             .vertical(|ui| {
                 ui.label(
                     RichText::new("Studio Settings & Diagnostics")
-                        .size(16.0)
+                        .size(crate::text_scale::px(16.0))
                         .strong()
                         .color(ZINC_50),
                 );
@@ -236,12 +245,12 @@ fn render_dialog_contents(
                     RichText::new(
                         "Firmware DSP options, MIDI & audio metering, and .ns4b backup tools.",
                     )
-                    .size(11.5)
+                    .size(crate::text_scale::px(11.5))
                     .color(ZINC_400),
                 );
             })
             .response;
-        let drag_w = (ui.available_width() - 62.0).max(16.0);
+        let drag_w = (ui.available_width() - crate::text_scale::px(62.0)).max(16.0);
         let (_, spacer_resp) =
             ui.allocate_exact_size(egui::vec2(drag_w, 34.0), egui::Sense::click_and_drag());
         let drag_rect = title_area.rect.union(spacer_resp.rect);
@@ -286,7 +295,7 @@ fn render_dialog_contents(
                         .add(
                             egui::Button::new(
                                 RichText::new(tab.label())
-                                    .size(11.5)
+                                    .size(crate::text_scale::px(11.5))
                                     .strong()
                                     .color(text_col),
                             )
@@ -383,7 +392,7 @@ fn render_dialog_contents(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Download Factory Bank v1.66 (.ns4b)")
-                                            .size(11.5)
+                                            .size(crate::text_scale::px(11.5))
                                             .strong()
                                             .color(ZINC_50),
                                     )
@@ -399,7 +408,7 @@ fn render_dialog_contents(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Open .ns4b Library")
-                                            .size(11.5)
+                                            .size(crate::text_scale::px(11.5))
                                             .color(ZINC_50),
                                     )
                                     .fill(ZINC_900)
@@ -416,7 +425,7 @@ fn render_dialog_contents(
                             RichText::new(
                                 "After downloading, drag & drop the .ns4b file onto the keyboard or load it from the Library & Backup tab.",
                             )
-                            .size(11.0)
+                            .size(crate::text_scale::px(11.0))
                             .color(ZINC_400),
                         );
                     },
@@ -432,7 +441,7 @@ fn render_dialog_contents(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Open Nord Stage 4 Downloads page")
-                                            .size(11.5)
+                                            .size(crate::text_scale::px(11.5))
                                             .strong()
                                             .color(ZINC_50),
                                     )
@@ -448,7 +457,7 @@ fn render_dialog_contents(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Open OS & Wave Tables Tab")
-                                            .size(11.5)
+                                            .size(crate::text_scale::px(11.5))
                                             .color(ZINC_50),
                                     )
                                     .fill(ZINC_900)
@@ -465,7 +474,7 @@ fn render_dialog_contents(
                             RichText::new(
                                 "Extract the .zip and select the Nord OS update file inside the OS & Wave Tables tab (saved automatically to your config).",
                             )
-                            .size(11.0)
+                            .size(crate::text_scale::px(11.0))
                             .color(ZINC_400),
                         );
                     },
@@ -510,8 +519,11 @@ pub fn show_debug_dialog(
         .with_title("ND Matrix 1 — Studio Settings & Diagnostics")
         .with_decorations(false)
         .with_transparent(true)
-        .with_inner_size([880.0, 520.0])
-        .with_min_inner_size([600.0, 340.0]);
+        .with_inner_size([
+            crate::text_scale::px(880.0).min(1600.0),
+            crate::text_scale::px(520.0).min(1000.0),
+        ])
+        .with_min_inner_size([crate::text_scale::px(600.0), crate::text_scale::px(340.0)]);
 
     ctx.show_viewport_immediate(viewport_id, builder, |vp_ctx, class| {
         if vp_ctx.input(|i| i.viewport().close_requested()) {
@@ -539,7 +551,7 @@ pub fn show_debug_dialog(
                 .title_bar(false)
                 .frame(rounded_frame)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .default_width(max_w.min(DIALOG_WIDTH))
+                .default_width(max_w.min(crate::text_scale::px(DIALOG_WIDTH)))
                 .max_size([max_w, max_h])
                 .vscroll(true)
                 .show(vp_ctx, |ui| {
