@@ -1,6 +1,6 @@
 ---
 # ns4-syng
-title: Synth Engine: why the ARM sends one voice bank bit (OQ40)
+title: 'Synth Engine: why the ARM sends one voice bank bit (OQ40)'
 status: completed
 type: task
 priority: low

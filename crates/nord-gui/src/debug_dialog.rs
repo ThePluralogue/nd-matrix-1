@@ -92,8 +92,7 @@ fn apply_shadcn_theme(ctx: &Context) {
     });
 }
 const FACTORY_BANK_URL: &str = "https://assets.nordkeyboards.com/media/documents/UTQHpgLs/Nord%20Stage%204%20Factory%20Restore%20RevK%20v1.66.ns4b";
-const OS_UPDATE_URL: &str =
-    "https://www.nordkeyboards.com/wt/documents/1042/Update%20Nord%20Stage%204%20OS%20v1.66.zip";
+const OS_UPDATE_URL: &str = nord_core::firmware_setting::DOWNLOADS_PAGE;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum DebugTab {
@@ -426,13 +425,13 @@ fn render_dialog_contents(
                 shadcn_card(
                     ui,
                     "2. Nord Stage 4 OS Update (Wave Tables)",
-                    "Download the official Nord Stage 4 OS v1.66 update (.zip) to enable the 46 hardware SHARC wave tables.",
+                    "Get the official Nord Stage 4 OS v1.66 update from Nord's Downloads page to enable the 46 hardware SHARC wave tables.",
                     |ui| {
                         ui.horizontal_wrapped(|ui| {
                             let dl_btn = ui
                                 .add(
                                     egui::Button::new(
-                                        RichText::new("Download Nord Stage 4 OS v1.66 (.zip)")
+                                        RichText::new("Open Nord Stage 4 Downloads page")
                                             .size(11.5)
                                             .strong()
                                             .color(ZINC_50),
@@ -611,6 +610,16 @@ mod tests {
             (1542.0, 359.0)
         );
         assert_eq!(embedded_max_size(egui::vec2(10.0, 10.0)), (200.0, 120.0));
+    }
+
+    #[test]
+    fn the_os_update_button_opens_the_downloads_page_not_a_file() {
+        assert_eq!(
+            OS_UPDATE_URL,
+            "https://www.nordkeyboards.com/products/nord-stage-4/downloads"
+        );
+        assert!(!OS_UPDATE_URL.contains("/wt/documents/"));
+        assert!(!OS_UPDATE_URL.ends_with(".zip"));
     }
 
     #[test]
