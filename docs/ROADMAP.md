@@ -453,6 +453,8 @@ The ticks below mean the model exists and is tested. Which parts match the firmw
 - [ ] **Gate 2a — Live `SPORT`/audio DMA bus & SDRAM window (`ns4-lle4`):** wire `ORG`/`PNO`/`SY`/`SMP` outputs directly into `FX Core1/Core2`, fix `FX Core2` poll-loop continuation, and map external SDRAM (`0x20xxxxxx`) for delay/reverb (`ns4-8aoy`)
 - [ ] **Gate 2b — Unified Rust multi-chip LLE engine (`ns4-lle5`):** single lock-free `LleEngine` combining ARM0, all 5 DSP images, DSP→ARM return path (`ns4-nds8`), and `SMP` CNSP page refill (`ns4-pnoc`) with zero allocations in `process_block()`
 - [ ] **Gate 3a — Live I/O, `.ns4b` store & OLED (`ns4-lle6`):** wire real-time MIDI, pedals, panel controls, ARM program store (`ns4-pyqg`), and real OLED framebuffers (`ns4-2gdc`)
+  - [x] Engine-neutral half: wait-free SPSC event rings, MIDI / pedal / panel events and translation, lock-free OLED / LED telemetry, `LleInput` / `LleTelemetry` traits ([lle-io](specs/lle-io.md))
+  - [ ] Wiring into ARM0 input queues, `.ns4b` program store and real OLED / LED data (blocked on `ns4-lle5`)
 - [ ] **Gate 3b — Opt-in LLE backend & D2/D119 decision (`ns4-lle7`):** expose `--engine lle` / Settings toggle in `nd-matrix-1` and `nord-plugin`, and decide whether LLE retires firmware-derived HLE tables (`ns4-u8o2`)
 
 ## Legal & Licensing (`ns4-9wq1`)

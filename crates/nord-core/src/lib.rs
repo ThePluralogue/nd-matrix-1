@@ -15,6 +15,7 @@ pub mod firmware_setting;
 pub mod fx;
 pub mod heap_array;
 pub mod library_ops;
+pub mod lle_io;
 pub mod midi;
 pub mod morph;
 pub mod organ;
