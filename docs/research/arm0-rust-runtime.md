@@ -42,6 +42,16 @@ Equivalence: the state hash after each of the six phases is EQUAL between the sk
 * Steady state and key events: GO. Mean 0.21 to 0.41 ms/tick, p99 below 0.9 ms (key phases).
 * Load burst and heavy key events: the worst ticks run the whole 200,000-instruction budget for real (3 to 5.7 ms). They are 4.8 % of load ticks and 2.5 % of eight-key ticks. A real-time driver must absorb them (buffer a few ticks of ARM messages, or run ARM0 on its own thread ahead of the audio clock). Meeting 1 ms on every tick needs about 200 MIPS (3.5x the interpreter).
 
+## What the over-1-ms ticks mean for real time
+
+Plainly: **4.8 % of load ticks and 2.5 % of key-event ticks exceed 1.0 ms wall-clock per 1 ms virtual tick** (2.5 % in both eight-key phases). Single-key and idle phases have none. In every phase the mean is far below 1 ms, so the work is a throughput surplus with rare spikes, not a hard miss on average:
+
+* **Amortization works if ARM0 is decoupled.** ARM0 runs ahead of the audio clock on its own thread and queues its ARM to DSP messages. A burst of 3 to 6 ticks at 3.5 to 5.7 ms is repaid by the following 0.2 ms ticks (mean 0.21 to 0.41 ms leaves 60 to 80 % of the budget free). It costs a few ms of message latency, not an audio dropout, because the SHARC side consumes the queue, not the ARM tick.
+* **A hard miss happens only if ARM0 is locked 1:1 to the audio callback** (a tick must finish inside its own 1 ms). Then 2.5 to 4.8 % of ticks glitch. Do not wire it that way before a faster core exists.
+* **Not measured:** the longest run of consecutive over-budget ticks (needed to size the queue) and message latency under a queue. Follow-up.
+
+**Go / no-go for ARM0 real-time: GO**, conditional on the decoupled thread plus message queue. NO-GO for a lockstep design until the interpreter reaches about 200 MIPS (predecode cache).
+
 ## Not verified
 
 * `INSNS_PER_TICK = 200000` is ASSUMED. If the real ARM926 retires fewer instructions per ms the heavy ticks shrink.
