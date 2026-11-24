@@ -4,12 +4,14 @@ title: Move firmware-derived tables and code images to runtime loading
 status: in-progress
 type: task
 created_at: 2026-11-17T04:06:20Z
-updated_at: 2026-11-23T12:00:00Z
+updated_at: 2026-11-23T21:25:00Z
 parent: ns4-trkb
 ---
 
 **Context**
 D128 classifies tracked firmware-derived data (docs/research/firmware-derived-data-inventory.md). Classes B (code images) and C (large tables) are still committed.
+
+**Legal priority order (2026-11-23):** Migrate **Class B first** (`native_bass_gen.rs`, `native_bass_proc.rs`, `prog_gen.rs`, `prog_proc.rs`, `bass-fw-image.csv`, `vox_image.rs`, `firmware_bank.rs` — literal firmware translations and code images carry the highest copyright risk), then **Class C** (the 31 numeric tables).
 
 **Higher Goal**
 Repository holds only our own work; firmware data is read from the user OS update file at runtime.
@@ -19,7 +21,9 @@ Repository holds only our own work; firmware data is read from the user OS updat
 - [ ] Default render without an image has a documented fallback (done for Farfisa: the opt-in stage is not built without the file and the layer renders the stage-off model, `docs/specs/organ-engine.md` 3.1.8; open for the other migrations)
 - [ ] Each path below is migrated to runtime loading with a synthetic-fixture test, then deleted and removed from `tools/fw-derived-baseline.txt` (the ratchet in `tools/check_fw_derived.py` only allows the list to shrink). Verification needs the owner's OS update file, which is not available in the agent environment.
 - [ ] `crates/nord-core/src/organ/b3_bass_fw/prog_gen.rs`
-- [ ] `crates/nord-core/src/organ/b3_bass_fw/prog_proc.rs` (also `b3_bass_fw/native_bass_gen.rs` and `native_bass_proc.rs`, generated from the same rows, not on the ratchet list)
+- [ ] `crates/nord-core/src/organ/b3_bass_fw/prog_proc.rs`
+- [ ] `crates/nord-core/src/organ/b3_bass_fw/native_bass_gen.rs` (now tracked on `tools/fw-derived-baseline.txt`)
+- [ ] `crates/nord-core/src/organ/b3_bass_fw/native_bass_proc.rs` (now tracked on `tools/fw-derived-baseline.txt`)
 - [x] `crates/nord-core/src/organ/farfisa_fw/prog_proc.rs` (migrated 2026-11-23: rows decoded at setup time from the update file; 957 of 957 rows equal; the generated `b3_bass_fw/native_farfisa.rs` is removed with it)
 - [ ] `crates/nord-core/src/organ/firmware_bank.rs`
 - [ ] `crates/nord-core/src/organ/vox_image.rs`

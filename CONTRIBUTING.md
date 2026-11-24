@@ -35,8 +35,8 @@ Thank you for your interest in contributing to **ND Matrix 1** (`nord-stage-4-em
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/nord-stage-4-emulator.git
-cd nord-stage-4-emulator
+git clone https://github.com/ymatrix1/nd-matrix-1.git
+cd nd-matrix-1
 
 # Sync Python dependencies for tools/ and tests
 uv sync --locked

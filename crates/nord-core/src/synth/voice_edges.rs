@@ -32,6 +32,11 @@ impl SynthLayer {
     pub fn arp_step_seconds(&self) -> f32 {
         self.step_seconds()
     }
+
+    /// Gate-mode amplitude gate level `0..=1` (1.0 outside Gate mode).
+    pub fn gate_level(&self) -> f32 {
+        self.perf.gate_level
+    }
 }
 
 /// Tracks the gate of every voice slot and reports the edges between two calls.
@@ -115,6 +120,12 @@ mod tests {
         layer.perf.master_bpm = 100.0;
         layer.perf.arp_division = crate::synth::ClockDivision::Sixteenth;
         assert!((layer.arp_step_seconds() - 0.15).abs() < 1e-6);
+    }
+
+    #[test]
+    fn gate_level_is_open_outside_gate_mode() {
+        let layer = SynthLayer::new(48_000.0);
+        assert_eq!(layer.gate_level(), 1.0);
     }
 
     #[test]
