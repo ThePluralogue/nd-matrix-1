@@ -24,6 +24,8 @@ def make_tree(tmp_path, platform):
     (root / "docs" / "RELEASE_README.txt").write_text("readme")
     (root / "docs" / "HOST_COMPATIBILITY.md").write_text("compat")
     (root / rp.THIRD_PARTY_NOTICES).write_text(NOTICES_OK, encoding="utf-8")
+    for name in rp.LEGAL_NOTICES:
+        (root / name).write_text(f"{name} text", encoding="utf-8")
     (root / "Cargo.toml").write_text(
         '[workspace]\nmembers = []\n\n[workspace.package]\nversion = "1.2.3"\n'
     )
@@ -119,6 +121,21 @@ def test_collect_missing_third_party_notices_names_the_command(tmp_path):
         rp.collect(LIN, root)
 
 
+def test_collect_includes_legal_notices(tmp_path):
+    root = make_tree(tmp_path, LIN)
+    items = {rel: src for src, rel in rp.collect(LIN, root)}
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert items[name] == root / name
+
+
+@pytest.mark.parametrize("name", ["ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"])
+def test_collect_missing_legal_notice_fails(tmp_path, name):
+    root = make_tree(tmp_path, LIN)
+    (root / name).unlink()
+    with pytest.raises(FileNotFoundError, match=name):
+        rp.collect(LIN, root)
+
+
 def test_package_archives_ship_notices_next_to_license(tmp_path):
     for platform in (LIN, WIN, MAC):
         root = make_tree(tmp_path / platform.name, platform)
@@ -133,6 +150,8 @@ def test_package_archives_ship_notices_next_to_license(tmp_path):
         top = archive.name.removesuffix(".zip").removesuffix(".tar.gz")
         assert f"{top}/LICENSE" in names
         assert f"{top}/THIRD_PARTY_LICENSES.html" in names
+        assert f"{top}/ADDITIONAL-PERMISSIONS.md" in names
+        assert f"{top}/TRADEMARKS.md" in names
 
 
 def test_write_sha256_is_lf_and_sha256sum_format(tmp_path):

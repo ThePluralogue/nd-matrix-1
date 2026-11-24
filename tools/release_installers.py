@@ -24,6 +24,7 @@ from release_package import (
     APPIMAGE_RUNTIME_SHA256,
     DOC_FILES,
     LEGACY_PLUGIN_STEM,
+    LEGAL_NOTICES,
     PLATFORMS,
     PLUGIN_STEM,
     ROOT,
@@ -232,6 +233,10 @@ def render_inno_iss(
         f'Source: "{src}\\README.txt"; DestDir: "{{app}}"; Flags: ignoreversion',
         f'Source: "{src}\\HOST_COMPATIBILITY.md"; DestDir: "{{app}}"; Flags: ignoreversion',
         f'Source: "{src}\\{THIRD_PARTY_NOTICES}"; DestDir: "{{app}}"; Flags: ignoreversion',
+        *(
+            f'Source: "{src}\\{name}"; DestDir: "{{app}}"; Flags: ignoreversion'
+            for name in LEGAL_NOTICES
+        ),
         (
             f'Source: "{src}\\LICENSE*"; DestDir: "{{app}}"; '
             "Flags: ignoreversion skipifsourcedoesntexist"
@@ -697,6 +702,8 @@ def stage_macos_pkg_roots(
     resources.mkdir(parents=True)
     shutil.copy2(raw_stage / "README.txt", resources / "README.txt")
     shutil.copy2(raw_stage / THIRD_PARTY_NOTICES, resources / THIRD_PARTY_NOTICES)
+    for name in LEGAL_NOTICES:
+        shutil.copy2(raw_stage / name, resources / name)
     write_macos_license(raw_stage, resources)
 
     dist_xml = pkg_work / "distribution.xml"

@@ -5,6 +5,10 @@
   <sub>Built for interoperability, research, preservation, and compatibility purposes.</sub>
 </p>
 
+<p align="center">
+  <a href="https://github.com/sponsors/ymatrix1"><img alt="Sponsor on GitHub" src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?logo=githubsponsors&logoColor=white"></a>
+</p>
+
 ---
 
 The **Nord Stage 4** (`product_id=46`) is built around a **three-engine, 7-layer multitimbral DSP architecture** running across an **`ARM0`** host controller and parallel Analog Devices SHARC floating-point DSPs (**`DSPO`** Organ, **`DSPS`** Synth, **`DSPF`** Effects & Piano Resonance).
@@ -104,6 +108,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution guide. Before o
 ## License
 
 This project is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, study, modify, and share it for any noncommercial purpose (personal use, research, hobby projects, and noncommercial organizations); commercial use needs separate permission from the licensor. The crates are not published to crates.io (`publish = false`). Releases also ship `THIRD_PARTY_LICENSES.html` with the licenses of the open-source crates they contain.
+
+- Musicians: making, performing, recording, broadcasting or streaming music with the software, paid or not, is allowed; selling or bundling the software is not. See [ADDITIONAL-PERMISSIONS.md](ADDITIONAL-PERMISSIONS.md). This wording is a draft pending counsel review (`ns4-ns2j`); it is not legal advice.
+- Names: forks and modified builds must use a different name and icon. See [TRADEMARKS.md](TRADEMARKS.md).
 
 The licensing of the DAW plugin (`crates/nord-plugin`) is under review; until that is settled it is covered by the same license.
 

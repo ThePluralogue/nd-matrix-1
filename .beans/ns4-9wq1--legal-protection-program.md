@@ -32,8 +32,8 @@ Open:
 - [ ] ns4-u8o2 Move firmware-derived tables to runtime loading
 - [ ] ns4-vt4r Move release tags and purge old PR refs after the history rewrite (Owner action)
 - [ ] ns4-6fbu Repository settings: required checks and description (Owner action)
-- [ ] ns4-4qmh Additional permission for musicians (paid performances and recordings)
-- [ ] ns4-0s8y Trademark policy for the ND Matrix 1 name
+- [ ] ns4-4qmh Additional permission for musicians (paid performances and recordings) (drafted in D241, counsel review pending)
+- [ ] ns4-0s8y Trademark policy for the ND Matrix 1 name (drafted in D241, registration pending)
 - [ ] ns4-9ngp Decide DCO or CLA for contributions (Owner decision)
 - [ ] ns4-ns2j Counsel review of docs/LEGAL.md open questions (Owner action)
 - [x] ns4-sgro Licenses of the AppImage runtime shipped in Linux releases
