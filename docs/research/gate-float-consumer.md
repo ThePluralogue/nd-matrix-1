@@ -12,7 +12,7 @@ Tags follow `.agents/rules/provenance-in-code.md`. Reproduce commands are at the
 
 | # | Finding | Tag |
 |---|---|---|
-| 1 | Reader pcs: ORG core 2 `0x125EFD`, `0x125FA3`, `0x126049` (loads of the pair `DM(0xC1396/7)`, `0xC13E6/7`, `0xC1436/7`, 2 loads each, one per pass); PNO core 2 `0x125F02` (same pair, 6 loads in 6 passes). Spacing `0xA6` words = one preamble block per list node (I0 = record `0xC13A6 + 0x28 k`, k = 0, 2, 4; the gate words sit at `I0 - 16` and `I0 - 15`: the two SIMD lanes). | VERIFIED (`sharc-org --rwatch`, 3 windows) |
+| 1 | Reader pcs: ORG core 2 `0x125EFD`, `0x125FA3`, `0x126049` (loads of the pair `DM(0xC1396/7)`, `0xC13E6/7`, `0xC1436/7`, 2 loads each, one per pass); PNO core 2 `0x125F02` (same pair, 6 loads in 6 passes); ORG core 1 `0x125F18`, `0x125FBE`, `0x126064` (Core1 start of org-dsp-map s2, 4 passes, same `0xA6` spacing). Spacing `0xA6` words = one preamble block per list node (I0 = record `0xC13A6 + 0x28 k`, k = 0, 2, 4; the gate words sit at `I0 - 16` and `I0 - 15`: the two SIMD lanes). | VERIFIED (`sharc-org --rwatch`, 3 windows) |
 | 2 | The preamble stores one-pole state into `I0 - 10` and `I0 - 8` (pairs `0xC139C..F`, `0xC13EC..F`, `0xC143C..F`; the two are equal in every pass checked). Stores at `0x125F08..0x125F1B`. | VERIFIED (`--watch`) |
 | 3 | Law: `g' = g + c (G - g)` per pass with `G` the gate float, `c = 0.005` (`0x3BA3D70A` in `I0 - 12`) and `1 - c = 0.995` (`0x3F7EB851` in `I0 - 14`), both coefficient words are initialised by the ARM recall, not by the gate. Fit of 3 nodes x 2 edges: `c = 0.005000`, max one-step deviation 4e-8 (fall) and 1.1e-7 (rise). Time constant `-1 / ln(1 - c) = 199.5` passes = **9.19 ms**, 10 to 90 % in 438 passes = **20.2 ms**, largest one-pass change 0.5 % of the step (no hard edge). Rise and fall are symmetric. | VERIFIED (`tools/gate_edge_probe.py`, unit-tested fit) ; pass period 2 frames at 43,402.34 Hz ASSUMED (D121) |
 | 4 | Consumer: `R8 = DM(0xC139E)` (`0xC13C6`, `0xC13EE`, ... for k = 1, 2, ...) at pc `0x1285B8` (node 0; the multiply of node k is at `0x1285D2 + 0x24 k`, six nodes k = 0..5). The block loads four stride-2 words from the slot buses (`I3 = 0xB135C + 8 s`, M2 = 2, SIMD pairs), adds the second operand `R9 = DM(0xC1394 + 0x28 k)` times the complementary-register words, multiplies the four sums by `R8` and writes them to the output buffers (`I2 = DM(0xB2EF5)`, `I4 = DM(0xB2EF6)`, here `0xB0000` / `0xB0028`). So the gain acts on the **layer slot bus sum, after every voice stage has accumulated into it and before the output buffer**. | VERIFIED (pcs, registers by `--trace`); data flow of the two operands ASSUMED (compute decode of the SIMD complementary registers read from the listing, not checked by a unit test) |
@@ -46,7 +46,7 @@ The ENV smoothing of `tick_gate` (`tau = 0.25 * step * (1 - env) + 0.5 ms`) is t
 ## Follow-ups
 
 1. OQ43: route a synth voice into a slot bus (find which stage state or ARM word makes `0xB135C + 8 s` non-zero) and tap the output buffer after the multiply; compare against the multiplier fit.
-2. ORG core 1 (same program, ARM writes the same words): run its `--rwatch` with the Core1 start (`--rx-irq`) and confirm the reader pcs (not run here).
+2. ORG core 1 is confirmed as a reader (row 1); its smoothing and multiply were not measured, only assumed equal (same program).
 3. Third pair per node: `R9 = DM(0xC1394 + 0x28 k)` multiplies a second operand into the sum (0 in the image); find its ARM writer (cross-layer send?).
 4. Hardware clip of an arp gate edge to test the 9.2 ms reading.
 
@@ -58,6 +58,7 @@ python tools/ns4_dsp_ldr.py target/DSP/dsp_image_1_PNO.bin --sram target/gate/PN
 # 1. readers (replay of the capture: load rows at pass 0, the chord and gate words later; message script `PASS DM VALUE`)
 sharc-org target/gate/ORG/core2_sram.bin --dev 0x282c0380=1 --dev 0x3108d008=5 --pre 0x3e021=1 --passes 20 \
     --msg-base 0 --msg-script org.script --rwatch 0xC1396:2:100       # also 0xC13E6:2, 0xC1436:2
+sharc-org target/gate/ORG/core1_sram.bin --dev 0x3108d008=5 --dev 0x28ac0380=1 --dev 0x3108c06c=0x400 --dev 0x3108c00c=4 --flag 1=1 --boot 3000000 --trigger 0xB00E1 --idle-pc 0x125DF3 --passes 4 --rwatch 0xC1396:2:100
 sharc-org target/gate/PNO/core2_sram.bin --dev 0x282c0380=1 --dev 0x3108d008=5 --pre 0x3e021=1 --passes 6 --rwatch 0xC1396:2:100
 # 2. edge shape (taps record-8 of nodes 0, 2, 4 after every pass; gate 1 -> 0 -> 1 at passes 2000, 4000)
 cargo build --release -p nord-sharc --bin sharc-sys
