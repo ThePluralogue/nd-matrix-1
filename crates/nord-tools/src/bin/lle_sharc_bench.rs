@@ -12,10 +12,8 @@
 //! tag run the AOT blocks; the others stay on the interpreter. Output: one row per core and the
 //! scheduler tick, all against the 46.08 us pass period (2 frames at 43 402.34 Hz).
 use nord_sharc::core::aot_prof::{aot_prof_enable, ProfReport, ProfRow};
-use nord_sharc::runner::fx_run::FxDrive;
 use nord_sharc::runner::live_presets::{boot_core, preset_named};
-use nord_sharc::runner::msg::{parse_msg, parse_script, Msg};
-use nord_sharc::runner::pass::PassConfig;
+use nord_sharc::runner::msg::parse_msg_text;
 use nord_sharc::runner::pass_sched::{run_ticks, summarize, Engine, PassJob};
 use nord_sharc::runner::periph_run::PeriphOpts;
 use nord_sharc::runner::system::{pass_period_s, FRAME_RATE};
@@ -47,24 +45,6 @@ fn parse_core(s: &str) -> Result<CoreSpec, String> {
     })
 }
 
-/// Messages of a text of `--msg X` tokens, or of an ARM load script (`PASS W1 W2` lines, the
-/// `sharc-sys --script-flat` format: every message is delivered before pass 0, in file order).
-fn parse_msgs(text: &str) -> Result<Vec<Msg>, String> {
-    if text.trim_start().starts_with(|c: char| c.is_ascii_digit()) {
-        let mut v = parse_script(text)?;
-        v.iter_mut().for_each(|m| m.pass = 0);
-        return Ok(v);
-    }
-    let mut out = Vec::new();
-    let mut it = text.split_whitespace();
-    while let Some(t) = it.next() {
-        if t == "--msg" {
-            out.push(parse_msg(it.next().ok_or("--msg without a value")?)?);
-        }
-    }
-    Ok(out)
-}
-
 fn job(spec: &CoreSpec, engine: Engine) -> Result<PassJob, String> {
     let data = std::fs::read(&spec.image).map_err(|e| format!("{}: {e}", spec.image))?;
     let preset = preset_named(&spec.preset).ok_or_else(|| format!("preset {:?}", spec.preset))?;
@@ -77,24 +57,12 @@ fn job(spec: &CoreSpec, engine: Engine) -> Result<PassJob, String> {
         _ => engine = Engine::Interp,
     }
     let msgs = match &spec.msgs {
-        Some(f) => parse_msgs(&std::fs::read_to_string(f).map_err(|e| format!("{f}: {e}"))?)?,
+        Some(f) => parse_msg_text(&std::fs::read_to_string(f).map_err(|e| format!("{f}: {e}"))?)?,
         None => Vec::new(),
     };
-    Ok(PassJob {
-        name: spec.name.clone(),
-        core,
-        cfg: PassConfig {
-            trigger: preset.trigger,
-            idle_pc: preset.idle_pc,
-            max_steps: 2_000_000,
-            irq: preset.irq,
-        },
-        msgs,
-        msg_base: 0,
-        ping_pong: preset.ping_pong,
-        fx: preset.fx.map(FxDrive::new),
-        engine,
-    })
+    Ok(PassJob::from_preset(
+        &spec.name, core, &preset, msgs, engine,
+    ))
 }
 
 fn main() -> Result<(), String> {
@@ -285,24 +253,5 @@ mod tests {
         let c = parse_core("C=img.bin,org,,TAG").unwrap();
         assert!(c.msgs.is_none() && c.tag.as_deref() == Some("TAG"));
         assert!(parse_core("nope").is_err() && parse_core("D=only").is_err());
-    }
-
-    #[test]
-    fn msg_tokens_are_read_from_a_sharc_sys_style_text() {
-        let m = parse_msgs("--msg 0:0x3e021=1\n--msg 2:0xe02f8=f1.0").unwrap();
-        assert_eq!(m.len(), 2);
-        assert_eq!((m[0].pass, m[0].word1, m[0].word2), (0, 0x3e021, 1));
-        assert_eq!((m[1].pass, m[1].word2), (2, 0x3F80_0000));
-        assert!(parse_msgs("--msg").is_err());
-        let flat = parse_msgs(
-            "5 0xb0497 0x000b0495  # tick
-7 0xc12ee 3
-",
-        )
-        .unwrap();
-        assert_eq!(flat.len(), 2);
-        assert!(flat.iter().all(|m| m.pass == 0));
-        assert_eq!((flat[1].word1, flat[1].word2), (0xc12ee, 3));
-        assert!(parse_msgs("--other x").unwrap().is_empty());
     }
 }
