@@ -2621,3 +2621,14 @@ The rate matches in all three; the score of the clock word is better than flag o
 - **Alternatives:** `unicorn-engine` Rust bindings (rejected: GPLv2 against PolyForm, C++ build dependency, per-access hook callbacks, no cheap state-equality probe); keep Python (rejected: 8 to 24 ms/tick); dynamic recompilation (deferred: the interpreter already meets the mean target).
 - **Limits:** Mean 0.21 to 0.41 ms/tick but 2.5 to 4.8 % of ticks in the load and key phases exceed 1 ms (worst 5.7 ms) because a full 200,000-instruction tick costs about 3.5 ms (about 57 MIPS). The 200,000 instructions per tick is still ASSUMED. Boot null-call count differs from the Unicorn run (747 against 762, unexplained).
 - **Impact:** `crates/nord-arm/`, `crates/nord-tools/src/bin/arm_lle_bench.rs`, `Cargo.toml`, [specs/arm0-runtime.md](specs/arm0-runtime.md), [research/arm0-rust-runtime.md](research/arm0-rust-runtime.md), `docs/ROADMAP.md` Gate 1a, bean `ns4-lle2`.
+
+### D243. A held `.npno` note fades out over the last 0.25 s of its stroke instead of stopping (issue #640)
+
+- **Status:** accepted 2026-11-23
+- **Decided by:** the repo owner (chose "Fade tail out" over "Loop sample tail" in session)
+- **Context:** `.npno` strokes carry no loop points (`NpnoStroke::loop_start` / `loop_end` are `None`) and the engine freed a voice at the last decoded frame. Library notes are 3.7 to 5.8 s long (stroke 513 of Astoria Grand: 162,532 frames = 4.64 s at 35 kHz, oracle run below), so a note held longer ended with a sudden cut, higher notes first, while the key-up sample still played on pedal release. Reported in issue #640.
+- **Decision:** `piano/tail_fade.rs` scales every non-release sample voice by a raised-cosine gain over the last `0.25 s` of its stroke (at most the last quarter of a short stroke). Release (key-up) strokes are untouched.
+- **Why:** hides the cut with no change to notes shorter than the sample. The hardware end-of-sample behaviour is unmeasured, so the fade is the smallest change that removes the artefact.
+- **Alternatives:** loop the sample tail (rejected: no evidence the hardware loops a factory stroke, risks an audible loop artefact); leave as is (rejected: reported as a bug).
+- **Limits:** ASSUMED length and shape. The firmware frees a non-looping voice at counter `F-9` and wraps at `F-8` by `F-7` ([smp-slew](research/smp-slew.md) s3, VERIFIED), but whether a factory stroke sets a loop is still unread. The ARM+SHARC run (80,000 key ticks, Astoria Grand) confirmed the stroke lengths; its tap gate closes after about 24,000 words (D235), so the end of the stream was not observable there.
+- **Impact:** `crates/nord-core/src/piano.rs`, `piano/tail_fade.rs` (+ tests); `specs/piano-engine.md` s9a; `research/piano-decay-attack.md`.
