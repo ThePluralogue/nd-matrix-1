@@ -146,14 +146,34 @@ pub fn requested(
     Ok(EngineKind::Hle)
 }
 
-/// The effective update file: `NS4_WAVE_TABLES` (the saved path was copied into it at start-up when
-/// it still loads), else `None`.
-pub fn effective_os_update() -> Option<PathBuf> {
-    std::env::var(WAVE_TABLES_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
+/// The effective update file from the value of `NS4_WAVE_TABLES` (the saved path was copied into it
+/// at start-up when it still loads): `None` when unset, empty or naming a path that does not exist,
+/// so a stale variable gets the "set your update file" prompt instead of a later failure.
+pub fn os_update_from(env: Option<&str>) -> Option<PathBuf> {
+    env.map(str::trim)
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
+        .filter(|p| p.exists())
+}
+
+/// [`os_update_from`] for the running process.
+pub fn effective_os_update() -> Option<PathBuf> {
+    os_update_from(std::env::var(WAVE_TABLES_ENV).ok().as_deref())
+}
+
+/// `args` without every `--engine <value>` pair, for command parsers that do not know the flag
+/// (the flag is read by [`startup`] first, so it can sit anywhere, even before the subcommand).
+pub fn strip_flag(args: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len());
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--engine" {
+            it.next();
+        } else {
+            out.push(a.clone());
+        }
+    }
+    out
 }
 
 /// Remembers `kind` in the config file at `config` (other saved settings are kept).
@@ -165,12 +185,40 @@ pub fn save_choice(config: &Path, kind: EngineKind) -> Result<(), String> {
 /// and saved setting, resolves the engine and prints any notice on stderr as `<who>: <notice>`. A bad
 /// request value is reported the same way and HLE runs. Returns the choice for the caller to wire.
 pub fn startup(who: &str, args: &[String]) -> EngineChoice {
-    let saved = crate::user_config::default_config_path()
-        .and_then(|p| crate::user_config::load(&p).ok())
-        .and_then(|c| c.engine);
+    let mut saved = None;
+    let mut config_error = None;
+    if let Some(p) = crate::user_config::default_config_path() {
+        match crate::user_config::load(&p) {
+            Ok(c) => saved = c.engine,
+            Err(e) => config_error = Some(e),
+        }
+    }
     let env = std::env::var(ENGINE_ENV).ok();
-    let choice = match requested(args, env.as_deref(), saved.as_deref()) {
-        Ok(k) => resolve(k, effective_os_update().as_deref(), LleBackend::probe),
+    let os_update = effective_os_update();
+    startup_with(
+        who,
+        args,
+        env.as_deref(),
+        saved.as_deref(),
+        config_error.as_deref(),
+        os_update.as_deref(),
+    )
+}
+
+/// [`startup`] with every input given (no process state), for tests.
+pub fn startup_with(
+    who: &str,
+    args: &[String],
+    env: Option<&str>,
+    saved: Option<&str>,
+    config_error: Option<&str>,
+    os_update: Option<&Path>,
+) -> EngineChoice {
+    if let Some(e) = config_error {
+        eprintln!("{who}: saved settings not read ({e}); the saved engine choice is ignored");
+    }
+    let choice = match requested(args, env, saved) {
+        Ok(k) => resolve(k, os_update, LleBackend::probe),
         Err(e) => EngineChoice {
             requested: EngineKind::Hle,
             effective: EngineKind::Hle,
@@ -289,8 +337,50 @@ mod tests {
 
     #[test]
     fn startup_with_a_bad_flag_runs_hle_and_never_panics() {
-        let c = startup("test", &s(&["x", "--engine", "bogus"]));
+        let c = startup_with(
+            "test",
+            &s(&["x", "--engine", "bogus"]),
+            None,
+            None,
+            None,
+            None,
+        );
         assert_eq!(c.effective, EngineKind::Hle);
         assert!(c.notice.unwrap().contains("bogus"));
+    }
+
+    #[test]
+    fn startup_with_saved_lle_and_no_file_prompts_and_a_corrupt_config_is_not_silent() {
+        let c = startup_with("test", &[], None, Some("lle"), None, None);
+        assert_eq!(
+            (c.requested, c.effective),
+            (EngineKind::Lle, EngineKind::Hle)
+        );
+        assert!(c.notice.unwrap().contains("Nord OS update file"));
+        // a corrupt config is reported on stderr and the choice stays HLE
+        let c = startup_with("test", &[], None, None, Some("bad json"), None);
+        assert_eq!(c.effective, EngineKind::Hle);
+    }
+
+    #[test]
+    fn the_update_file_must_exist_to_count_as_set() {
+        assert_eq!(os_update_from(None), None);
+        assert_eq!(os_update_from(Some("  ")), None);
+        assert_eq!(os_update_from(Some("/definitely/not/here.zip")), None);
+        let here = std::env::temp_dir();
+        assert_eq!(os_update_from(Some(here.to_str().unwrap())), Some(here));
+    }
+
+    #[test]
+    fn strip_flag_removes_every_engine_pair_wherever_it_sits() {
+        assert_eq!(
+            strip_flag(&s(&["ns4", "--engine", "lle", "info"])),
+            s(&["ns4", "info"])
+        );
+        assert_eq!(
+            strip_flag(&s(&["ns4", "info", "--engine", "hle", "--x"])),
+            s(&["ns4", "info", "--x"])
+        );
+        assert_eq!(strip_flag(&s(&["ns4", "--engine"])), s(&["ns4"]));
     }
 }

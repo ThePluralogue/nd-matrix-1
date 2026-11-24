@@ -1,6 +1,7 @@
 //! "Engine" toggle of the Settings tab (bean `ns4-lle7`): built-in engine (HLE, default) or the
 //! opt-in low-level engine (LLE). Shared by `nd-matrix-1` and the DAW plugin through
-//! `os_update_panel`. The LLE engine does not exist yet, so choosing it shows why the built-in
+//! `os_update_panel`. It shows and edits the **saved** choice only: a `--engine` flag or
+//! `NS4_ENGINE` is read by `engine_select::startup` in the binaries (the plugin has no such flag). The LLE engine does not exist yet, so choosing it shows why the built-in
 //! engine still runs (`nord_core::engine_select`); the choice is saved and applies at next start.
 
 use nord_core::engine_select::{self, EngineChoice, EngineKind, LleBackend};
@@ -57,18 +58,12 @@ impl EnginePanel {
         });
     }
 
-    /// One-line status for the bar.
-    pub fn summary(&self, os_update: Option<&Path>) -> String {
-        let c = self.choice(os_update);
-        match c.notice {
-            None => format!("Engine: {}", c.effective.as_str().to_uppercase()),
-            Some(_) => "Engine: HLE (LLE requested, unavailable)".to_string(),
-        }
-    }
-
     /// Draws the toggle and the fallback notice.
     pub fn show(&mut self, ui: &mut egui::Ui, os_update: Option<&Path>) {
         ui.label("Engine (experimental): built-in is the default. LLE runs your own Nord OS update file and is opt-in.");
+        ui.label(
+            "This is the saved choice; a --engine flag or NS4_ENGINE overrides it for one run.",
+        );
         let mut pick = self.requested;
         ui.horizontal(|ui| {
             ui.radio_value(&mut pick, EngineKind::Hle, "Built-in (HLE)");
@@ -101,7 +96,6 @@ mod tests {
         let p = EnginePanel::new(Some(config("default")));
         let c = p.choice(None);
         assert_eq!((c.effective, c.notice), (EngineKind::Hle, None));
-        assert_eq!(p.summary(None), "Engine: HLE");
     }
 
     #[test]
@@ -117,7 +111,6 @@ mod tests {
         assert!(no_file.notice.unwrap().contains("Nord OS update file"));
         let stub = again.choice(Some(Path::new("os.zip")));
         assert!(stub.notice.unwrap().contains("not implemented"));
-        assert!(again.summary(None).contains("unavailable"));
     }
 
     #[test]
@@ -138,8 +131,15 @@ mod tests {
         let mut p = EnginePanel::new(Some(config("draw")));
         p.select(EngineKind::Lle);
         let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| p.show(ui, None));
         });
+        assert!(!out.shapes.is_empty());
+        // LLE is saved but no update file is set: the prompt notice is what the panel shows
+        assert!(p
+            .choice(None)
+            .notice
+            .unwrap()
+            .contains("Nord OS update file"));
     }
 }

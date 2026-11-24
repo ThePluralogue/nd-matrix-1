@@ -495,6 +495,8 @@ fn main() {
         // (the offline commands below always render with the built-in engine until LLE exists)
         nord_core::engine_select::startup("ns4", &args);
     }
+    // the flag is consumed by `startup`; no subcommand parser needs to know it
+    let args = nord_core::engine_select::strip_flag(&args);
     match run_cli(&args) {
         Ok(out) => println!("{out}"),
         Err(err) => {
@@ -507,6 +509,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_engine_flag_is_accepted_before_or_after_any_subcommand() {
+        for a in [
+            vec!["ns4", "--engine", "lle", "info"],
+            vec!["ns4", "info", "--engine", "lle"],
+            vec!["ns4", "render-demo", "--engine", "hle"],
+        ] {
+            let args: Vec<String> = a.iter().map(|x| x.to_string()).collect();
+            let stripped = nord_core::engine_select::strip_flag(&args);
+            assert!(run_cli(&stripped).is_ok(), "{a:?}");
+        }
+    }
 
     #[test]
     fn test_cli_info_and_render_demo() {
