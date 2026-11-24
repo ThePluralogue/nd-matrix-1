@@ -64,7 +64,7 @@ impl Sdram {
     /// Returns false when the block does not lie inside the window.
     pub fn load(&mut self, at: u32, bytes: &[u8]) -> bool {
         let off = at.wrapping_sub(LOADER_BASE);
-        if off % 4 != 0 || off as usize + bytes.len() > 4 * WORDS as usize {
+        if !off.is_multiple_of(4) || off as usize + bytes.len() > 4 * WORDS as usize {
             return false;
         }
         for (k, w) in bytes.chunks(4).enumerate() {

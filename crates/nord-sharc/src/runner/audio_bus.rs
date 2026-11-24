@@ -117,7 +117,7 @@ impl AudioBus {
     pub fn run_tick(&mut self) -> Result<(), String> {
         let mut produced: Vec<Option<Vec<Frame>>> = vec![None; self.nodes.len()];
         for (i, node) in self.nodes.iter_mut().enumerate() {
-            if self.tick % u64::from(node.every().max(1)) != 0 {
+            if !self.tick.is_multiple_of(u64::from(node.every().max(1))) {
                 continue;
             }
             let need = node.in_frames();
