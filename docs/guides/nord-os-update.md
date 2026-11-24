@@ -6,14 +6,14 @@ Without the file everything still works; WAVE sounds use a built-in placeholder 
 
 ## 1. Download
 
-From the Nord Keyboards website (nordkeyboards.com, Downloads, Nord Stage 4, Operating System), take the current "Update Nord Stage 4 OS" file:
+Visit the official Nord Keyboards Downloads page (<https://www.nordkeyboards.com/> → Downloads → Nord Stage 4 → Operating System) and download the official "Update Nord Stage 4 OS" file for your platform:
 
-| Your computer | File | Direct link (v1.66) |
-|---|---|---|
-| Windows | `Update Nord Stage 4 OS v1.66.zip` (or the `.exe` inside it) | <https://www.nordkeyboards.com/wt/documents/1042/Update%20Nord%20Stage%204%20OS%20v1.66.zip> |
-| Mac | `Update Nord Stage 4 OS v1.66.dmg` | <https://www.nordkeyboards.com/wt/documents/1041/Update%20Nord%20Stage%204%20OS%20v1.66.dmg> |
+| Your computer | File |
+|---|---|
+| Windows | `Update Nord Stage 4 OS v1.66.zip` (or the `.exe` inside it) |
+| Mac | `Update Nord Stage 4 OS v1.66.dmg` |
 
-Use either file as downloaded. Do not unzip it, open the `.dmg`, or run the updater. Later versions have new document numbers; use the link on Nord's download page then. Only OS v1.66 is supported today; other versions say "unsupported Nord OS version".
+Use either file as downloaded. Do not unzip it, open the `.dmg`, or run the updater. Only OS v1.66 is supported today; other versions say "unsupported Nord OS version".
 
 ## 2. Give it to the app
 

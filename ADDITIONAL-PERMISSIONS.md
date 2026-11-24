@@ -1,6 +1,6 @@
 # Additional permissions
 
-Licensor: ymatrix1, the copyright holder of ND Matrix 1.
+Licensor: ymatrix1 and each contributor to ND Matrix 1.
 
 ND Matrix 1 is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). The licensor grants the following permission in addition to that license. The text of `LICENSE` is unchanged.
 

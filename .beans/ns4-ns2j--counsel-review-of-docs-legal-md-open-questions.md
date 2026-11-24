@@ -3,13 +3,15 @@
 title: 'Counsel review of docs/LEGAL.md open questions'
 status: todo
 type: task
-priority: normal
+priority: low
 created_at: 2026-11-23T16:00:00Z
-updated_at: 2026-11-23T16:00:00Z
+updated_at: 2026-11-23T21:25:00Z
 parent: ns4-9wq1
 ---
 
 ## Context
+**Deferred / optional ($0 legal budget):** Paid counsel is not planned while the project remains a free, non-commercial hobby/research effort. Revisit only if the project ever commercializes or receives a formal legal notice.
+
 docs/LEGAL.md section 8 lists open questions: vendor updater and website terms, US 17 USC 1201(f), EU Directive 2009/24/EC Art. 6, jurisdiction, history rewrite sufficiency, protectability of class B/C tables, PolyForm interaction, patents (no search done), AppImage runtime licenses. Earlier commits declared `MIT OR Apache-2.0` in Cargo metadata with no LICENSE file (D231): could anyone claim a permissive grant from them?
 
 ## Higher Goal

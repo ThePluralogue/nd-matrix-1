@@ -1,24 +1,25 @@
 ---
 # ns4-80xe
-title: 'Trade dress review of the panel look'
+title: 'Proactive trade dress mitigation: neutral non-red default panel theme'
 status: todo
 type: task
-priority: normal
+priority: high
 created_at: 2026-11-23T16:00:00Z
-updated_at: 2026-11-23T16:00:00Z
+updated_at: 2026-11-23T21:25:00Z
 parent: ns4-9wq1
 ---
 
 ## Context
-All shipped art is original (D16; vendor photos removed and blocked by `tools/check_no_vendor_photos.py`; the Blender proof `assets/blender/build_proof.py` builds geometry from primitives with procedural materials). The panel still reproduces the hardware's red chassis colour and section layout closely (`crates/nord-gui/assets/baked/panel_plate_2x.png`). Trade dress (overall look and feel) is a separate question from copyright and trademarks.
+All shipped art is original (D16; vendor photos removed and blocked by `tools/check_no_vendor_photos.py`; the Blender proof `assets/blender/build_proof.py` builds geometry from primitives with procedural materials). However, the panel still reproduces the hardware's signature red chassis colour and section layout closely (`crates/nord-gui/assets/baked/panel_plate_2x.png`). Trade dress (overall look and feel) is a separate risk from copyright and trademarks, and under a $0 legal budget the safest move is proactive visual differentiation rather than paying counsel to defend a red panel.
 
 ## Higher Goal
-The GUI's resemblance to the hardware is a conscious, reviewed choice with a documented risk level.
+The default GUI look and all public screenshots have a distinct, non-red ND Matrix 1 visual identity that does not mimic the vendor's signature red hardware chassis.
 
 ## Acceptance Criteria
-- [ ] Counsel opinion on trade dress risk of a close visual match (colour, layout, proportions) for an interoperability emulator
-- [ ] Owner decides: keep, add distinguishing elements (own colour theme option, wordmark, layout cues), or make a neutral theme the default
-- [ ] Decision recorded in docs/DECISIONS.md and docs/specs/visual-style-and-panel.md
+- [ ] Design and bake a neutral, non-red default chassis theme (e.g., dark charcoal/slate/navy) with clear ND Matrix 1 branding
+- [ ] Make the neutral theme the default in `nord-gui` and `nord-plugin`
+- [ ] Refresh README and release screenshots (`docs/img/gui/`) to show the neutral default theme
+- [ ] Decision recorded in `docs/DECISIONS.md` and `docs/specs/visual-style-and-panel.md`
 
 ## Out of Scope
 Removing the panel GUI.
