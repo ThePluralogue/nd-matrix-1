@@ -61,8 +61,8 @@ pub fn dm_image_text(
                 let bytes = code
                     .get(off as usize..off as usize + 4 * n)
                     .ok_or_else(|| format!("delta {line:?} reads outside bank0_CODE"))?;
-                for (k, c) in bytes.chunks_exact(4).enumerate() {
-                    words.insert(a + k as u32, u32::from_le_bytes([c[0], c[1], c[2], c[3]]));
+                for (k, c) in bytes.as_chunks::<4>().0.iter().enumerate() {
+                    words.insert(a + k as u32, u32::from_le_bytes(*c));
                 }
             }
             _ => return Err(format!("bad delta line {line:?}")),
