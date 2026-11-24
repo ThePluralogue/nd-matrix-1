@@ -23,6 +23,7 @@ pub mod organ;
 pub mod os_update;
 pub mod phase_wrap;
 pub mod piano;
+pub mod precision;
 pub mod preset_bits;
 pub mod preset_cli;
 pub mod program_check;

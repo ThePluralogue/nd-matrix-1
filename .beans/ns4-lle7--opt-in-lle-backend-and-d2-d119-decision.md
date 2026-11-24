@@ -22,6 +22,7 @@ Users can select the real-time LLE backend when they supply their own OS update 
 - [x] Graceful fallback (or clear prompt to supply the OS update file) when no OS update file is configured
 - [ ] Verify real-time stability in standalone and in DAW hosts (CLAP/VST3) (open: no LLE engine exists yet)
 - [ ] Record the architectural decision updating D2/D119 in `docs/DECISIONS.md` (D245 written as `proposed`; the final decision waits for Gate 3 evidence and the user) and coordinate with `ns4-u8o2` / `ns4-eh57` on retiring firmware-derived HLE tables
+- [x] User-selectable SHARC float precision `Exact` / `Fast` (`--precision`, `NS4_PRECISION`, saved key, Settings radio enabled only with LLE; plumbed to the stub backend seam; Fast tolerance still to be measured by `ns4-lle3`)
 - [x] Unit tests for engine selection and missing-firmware fallback
 
 ## Out of Scope

@@ -5,12 +5,14 @@
 //! engine still runs (`nord_core::engine_select`); the choice is saved and applies at next start.
 
 use nord_core::engine_select::{self, EngineChoice, EngineKind, LleBackend};
+use nord_core::precision::{self, PrecisionMode};
 use std::path::{Path, PathBuf};
 
 /// State of the engine toggle.
 pub struct EnginePanel {
     config: Option<PathBuf>,
     requested: EngineKind,
+    precision: PrecisionMode,
     message: Option<String>,
 }
 
@@ -18,14 +20,20 @@ impl EnginePanel {
     /// Reads the saved choice from `config`; an unreadable file or unknown value keeps HLE and says so.
     pub fn new(config: Option<PathBuf>) -> Self {
         let mut message = None;
+        let mut precision = PrecisionMode::Exact;
         let requested = match config.as_deref().map(nord_core::user_config::load) {
-            Some(Ok(c)) => match engine_select::requested(&[], None, c.engine.as_deref()) {
-                Ok(k) => k,
-                Err(e) => {
-                    message = Some(format!("{e}. The built-in engine is used."));
-                    EngineKind::Hle
+            Some(Ok(c)) => {
+                let (p, notice) = precision::resolve(&[], None, c.precision.as_deref());
+                precision = p;
+                message = notice;
+                match engine_select::requested(&[], None, c.engine.as_deref()) {
+                    Ok(k) => k,
+                    Err(e) => {
+                        message = Some(format!("{e}. The built-in engine is used."));
+                        EngineKind::Hle
+                    }
                 }
-            },
+            }
             Some(Err(e)) => {
                 message = Some(format!("saved settings not read ({e})."));
                 EngineKind::Hle
@@ -35,13 +43,35 @@ impl EnginePanel {
         Self {
             config,
             requested,
+            precision,
             message,
         }
     }
 
     /// The engine that runs for the saved request, given the effective update file.
     pub fn choice(&self, os_update: Option<&Path>) -> EngineChoice {
-        engine_select::resolve(self.requested, os_update, LleBackend::probe)
+        let mut c = engine_select::resolve(self.requested, os_update, LleBackend::probe);
+        c.precision = self.precision;
+        c
+    }
+
+    /// The precision selector is live only while the LLE engine is the requested one.
+    pub fn precision_enabled(&self) -> bool {
+        self.requested == EngineKind::Lle
+    }
+
+    /// Chooses the SHARC float precision and saves it (plumbed to the LLE backend seam).
+    pub fn select_precision(&mut self, mode: PrecisionMode) {
+        self.precision = mode;
+        self.message = Some(match &self.config {
+            None => {
+                "This system has no place to save settings; the choice lasts until you quit.".into()
+            }
+            Some(c) => match precision::save_choice(c, mode) {
+                Ok(()) => "Saved. Restart the app to apply the precision choice.".into(),
+                Err(e) => format!("Not saved: {e}"),
+            },
+        });
     }
 
     /// Chooses `kind` and saves it; the message says what happened in plain words.
@@ -71,6 +101,21 @@ impl EnginePanel {
         });
         if pick != self.requested {
             self.select(pick);
+        }
+        let mut prec = self.precision;
+        let enabled = self.precision_enabled();
+        ui.add_enabled_ui(enabled, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Precision:");
+                ui.radio_value(&mut prec, PrecisionMode::Exact, "Exact (bit-exact, 40-bit)");
+                ui.radio_value(&mut prec, PrecisionMode::Fast, "Fast (f32, real-time)");
+            });
+        });
+        if !enabled {
+            ui.label("Precision applies only to the low-level engine (LLE); select it above.");
+        }
+        if enabled && prec != self.precision {
+            self.select_precision(prec);
         }
         if let Some(n) = self.choice(os_update).notice {
             ui.label(n);
@@ -111,6 +156,25 @@ mod tests {
         assert!(no_file.notice.unwrap().contains("Nord OS update file"));
         let stub = again.choice(Some(Path::new("os.zip")));
         assert!(stub.notice.unwrap().contains("not implemented"));
+    }
+
+    #[test]
+    fn precision_is_saved_enabled_only_for_lle_and_a_bad_value_is_reported() {
+        let c = config("precision");
+        let mut p = EnginePanel::new(Some(c.clone()));
+        assert!(!p.precision_enabled());
+        assert_eq!(p.choice(None).precision, PrecisionMode::Exact);
+        p.select(EngineKind::Lle);
+        assert!(p.precision_enabled());
+        p.select_precision(PrecisionMode::Fast);
+        let again = EnginePanel::new(Some(c.clone()));
+        assert_eq!(again.choice(None).precision, PrecisionMode::Fast);
+        // the engine key survived the precision save
+        assert_eq!(again.requested, EngineKind::Lle);
+        nord_core::user_config::update(&c, |u| u.precision = Some("half".into())).unwrap();
+        let bad = EnginePanel::new(Some(c));
+        assert_eq!(bad.choice(None).precision, PrecisionMode::Exact);
+        assert!(bad.message.unwrap().contains("half"));
     }
 
     #[test]

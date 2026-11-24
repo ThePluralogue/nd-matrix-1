@@ -76,4 +76,17 @@ HLE (this spec's engine) is the default. The opt-in low-level engine (LLE) does 
 | Notice, backend missing | repeats the probe reason; never a panic, never silent |
 | Surfaces | `ns4` and `nd-matrix-1` print the notice on stderr at start; the Engine radio in the OS & Wave Tables settings (standalone and plugin) shows it and saves the choice (applies at next start) |
 
+### SHARC float precision (LLE only)
+
+| Item | Value |
+|---|---|
+| Type | `nord_core::precision::PrecisionMode { Exact, Fast }` (default `Exact`) |
+| `Exact` | emulated 40-bit extended-precision float, bit-exact; the oracle; default |
+| `Fast` | native `f32` for real-time play; audibly equivalent within a tolerance still to be measured (`ns4-lle3`); never used for oracle comparison |
+| Request, first match wins | `--precision exact\|fast`, `NS4_PRECISION`, config key `precision`, `exact` |
+| Old config | a file without the `precision` key loads unchanged (serde default) |
+| Bad value | `Exact` plus a notice naming the bad value and its source; never fatal |
+| Backend seam | `EngineChoice::precision`, set by `precision::apply_startup`; HLE ignores it |
+| Settings | Precision radio below the Engine radio; greyed with an explanation unless LLE is selected; the plugin shows it on the same page |
+
 `ns4 firmware set|clear` keeps the saved engine key. An unknown engine value is reported and HLE runs. Status: seam implemented and unit-tested; LLE itself and real-time stability in DAW hosts are not.

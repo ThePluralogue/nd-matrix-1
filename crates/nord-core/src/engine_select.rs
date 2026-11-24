@@ -10,6 +10,7 @@
 //! Precedence of the request, first match wins: `--engine hle|lle`, then `NS4_ENGINE`, then the
 //! saved setting (`user_config::UserConfig::engine`), then HLE.
 
+use crate::precision::PrecisionMode;
 use crate::render_opts_wave::WAVE_TABLES_ENV;
 use std::path::{Path, PathBuf};
 
@@ -77,6 +78,8 @@ pub struct EngineChoice {
     pub effective: EngineKind,
     /// Shown to the user when `effective != requested`; `None` otherwise.
     pub notice: Option<String>,
+    /// SHARC float precision for the LLE engine (ignored by HLE); set by `precision::apply_startup`.
+    pub precision: PrecisionMode,
 }
 
 /// Decides the engine for `requested`. `os_update` is the effective Nord OS update file (`None` =
@@ -91,12 +94,14 @@ pub fn resolve(
         requested,
         effective: EngineKind::Hle,
         notice: Some(format!("{why} Using the built-in engine (HLE) instead.")),
+        precision: PrecisionMode::Exact,
     };
     if requested == EngineKind::Hle {
         return EngineChoice {
             requested,
             effective: requested,
             notice: None,
+            precision: PrecisionMode::Exact,
         };
     }
     if os_update.is_none() {
@@ -109,6 +114,7 @@ pub fn resolve(
             requested,
             effective: EngineKind::Lle,
             notice: None,
+            precision: PrecisionMode::Exact,
         },
         LleAvailability::Unavailable(reason) => {
             fallback(format!("The LLE engine cannot run: {reason}."))
@@ -223,6 +229,7 @@ pub fn startup_with(
             requested: EngineKind::Hle,
             effective: EngineKind::Hle,
             notice: Some(format!("{e}. Using the built-in engine (HLE) instead.")),
+            precision: PrecisionMode::Exact,
         },
     };
     if let Some(n) = &choice.notice {

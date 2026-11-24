@@ -22,6 +22,9 @@ pub struct UserConfig {
     /// unknown value from a newer version never makes the whole file unreadable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<String>,
+    /// SHARC float precision of the LLE engine: `exact` (default) or `fast` (see `precision`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precision: Option<String>,
 }
 
 /// Config directory for the given platform inputs (pure, for tests): Windows `%APPDATA%`, macOS
