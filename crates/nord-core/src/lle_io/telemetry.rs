@@ -83,7 +83,8 @@ impl TelemetrySnapshot {
     fn to_words(&self, w: &mut [u32; WORDS]) {
         let mut i = 0;
         for fb in &self.oled {
-            for c in fb.chunks_exact(4) {
+            for k in 0..OLED_BYTES / 4 {
+                let c = &fb[k * 4..k * 4 + 4];
                 w[i] = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
                 i += 1;
             }
@@ -96,8 +97,8 @@ impl TelemetrySnapshot {
     fn load_words(&mut self, w: &[u32; WORDS]) {
         let mut i = 0;
         for fb in &mut self.oled {
-            for c in fb.chunks_exact_mut(4) {
-                c.copy_from_slice(&w[i].to_le_bytes());
+            for k in 0..OLED_BYTES / 4 {
+                fb[k * 4..k * 4 + 4].copy_from_slice(&w[i].to_le_bytes());
                 i += 1;
             }
         }
