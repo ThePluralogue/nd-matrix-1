@@ -474,7 +474,7 @@ The ticks below mean the model exists and is tested. Which parts match the firmw
 - [x] Remove in-GUI sponsorship button to keep strictly non-commercial posture (`ns4-s3pn`; README badge and `.github/FUNDING.yml` await an owner decision)
 - [ ] GitHub Support purge of old PR refs and release tag verification (`ns4-vt4r`, owner)
 - [ ] Required status checks and source-available repo description (`ns4-6fbu`, owner)
-- [ ] Free check of macOS `.dmg` updater and `nordkeyboards.com` terms (`ns4-d7mg`)
+- [x] Free check of macOS `.dmg` updater and `nordkeyboards.com` terms (`ns4-d7mg`)
 - [ ] Firmware-derived files moved to runtime loading — **Class B first**, then Class C (`ns4-u8o2`), followed by second history rewrite (`ns4-eh57`)
 - [ ] Proactive trade dress mitigation: neutral non-red default panel theme (`ns4-80xe`)
 - [ ] VST3 host checks in real DAWs (`ns4-pvb3`)
