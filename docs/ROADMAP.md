@@ -472,7 +472,7 @@ The ticks below mean the model exists and is tested. Which parts match the firmw
 - [x] History rewrite purging vendor files (2026-11-23, LEGAL.md section 8; `v0.1.0`–`v0.1.2` tags moved)
 - [x] Keep DCO (no CLA) under $0 legal budget; `ADDITIONAL-PERMISSIONS.md` updated to cover contributors (`ns4-9ngp`)
 - [x] AppImage runtime license notices and LGPL corresponding source (`ns4-sgro`, D242)
-- [ ] Rename `nord-plugin-standalone` and remove `nord-` prefix from shipped binaries (`ns4-b9rn`)
+- [x] Rename `nord-plugin-standalone` to `nd-matrix-1-standalone` and fail releases that ship any `nord-` name (`ns4-b9rn`)
 - [x] Remove in-GUI sponsorship button to keep strictly non-commercial posture (`ns4-s3pn`; README badge and `.github/FUNDING.yml` await an owner decision)
 - [ ] GitHub Support purge of old PR refs and release tag verification (`ns4-vt4r`, owner)
 - [ ] Required status checks and source-available repo description (`ns4-6fbu`, owner)

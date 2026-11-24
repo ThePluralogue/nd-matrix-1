@@ -18,6 +18,7 @@ pub mod library_ops;
 pub mod lle_io;
 pub mod midi;
 pub mod morph;
+pub mod oled_font;
 pub mod organ;
 pub mod os_update;
 pub mod phase_wrap;
