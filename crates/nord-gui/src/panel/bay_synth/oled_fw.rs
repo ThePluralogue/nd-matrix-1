@@ -61,6 +61,17 @@ fn centred(c: i32, w: i32) -> i32 {
     c - w / 2
 }
 
+/// Centres of the three value texts: the tabs sit on [`COLS`], the values one pixel left of the
+/// third. The left edge is `c - (w - 1) / 2`.
+const VALUE_COLS: [i32; 3] = [18, 63, 108];
+
+/// Left edge of a `w` px wide value centred on `c`.
+/// VERIFIED (ARM frames `Shape` w = 24 at 52, `Pure` 19 at 54, `3 (7)` 18 at 100, `Wave` 21 at 8,
+/// `Bells/Tines` 53 at 37, `Misc`, `Sub Osc`: 0 differing pixels).
+fn centred_value(c: i32, w: i32) -> i32 {
+    c - (w - 1) / 2
+}
+
 /// Pixels of the line from `a` to `b` (Bresenham), both ends included.
 pub(super) fn line_pixels(a: (i32, i32), b: (i32, i32)) -> Vec<(i32, i32)> {
     let (mut x, mut y) = a;
@@ -90,8 +101,10 @@ pub(super) fn line_pixels(a: (i32, i32), b: (i32, i32)) -> Vec<(i32, i32)> {
 ///
 /// A saw is the captured frame: a vertical left edge down to the ramp end and one falling ramp
 /// (VERIFIED by the ARM pixel check: Bresenham `(1, 1)` to `(w - 3, h - 3)`, then `(w - 2, h - 3)` and `(w - 1, h - 2)`,
-/// 0 differing pixels in the 41 x 22 box). A multi saw shows two ramps and the other waves use our
-/// sketch over two periods (ASSUMED: not compared with a frame yet).
+/// 0 differing pixels in the 41 x 22 box). Triangle, narrow pulse and the wave-table type (no
+/// picture) are also VERIFIED against frames. `Multi` (Super Saw), noise, the FM icon, sine and
+/// the sample sketch are ASSUMED and known to differ: the Super Saw / Sub / noise / FM pictures
+/// of the firmware are its own art, which we do not copy (D20, D128).
 pub(super) fn picture_pixels(icon: Icon, w: i32, h: i32) -> Vec<(i32, i32)> {
     let mut out = Vec::new();
     match icon {
@@ -101,6 +114,28 @@ pub(super) fn picture_pixels(icon: Icon, w: i32, h: i32) -> Vec<(i32, i32)> {
             out.extend(line_pixels((w - 3, h - 3), (w - 2, h - 3)));
             out.extend(line_pixels((w - 2, h - 3), (w - 1, h - 2)));
         }
+        Icon::Triangle => {
+            // VERIFIED (ARM `Shape Triangle` frame, 0 differing pixels): two 45 degree flanks
+            // from the bottom corners to the apex at the middle column, 21 rows high.
+            let (mid, bottom) = (w / 2, h - 2);
+            out.extend(line_pixels((0, bottom), (mid, 0)));
+            out.extend(line_pixels((mid, 0), (w - 1, bottom)));
+        }
+        Icon::Pulse(duty) => {
+            // VERIFIED for duty 0.1 (ARM `Pure Pulse 10` frame, 0 differing pixels); the edge
+            // column `round(duty * (w - 1)) + 1` is an ASSUMED fit of that one frame. The rising
+            // edge is split between the left and right ends of the box (rows 0..10 and 10..20),
+            // as the firmware draws it.
+            let bottom = h - 2;
+            let edge = ((duty.clamp(0.05, 0.95) * (w - 1) as f32).round() as i32 + 1).min(w - 2);
+            out.extend(line_pixels((0, 0), (edge, 0)));
+            out.extend(line_pixels((edge, 0), (edge, bottom)));
+            out.extend(line_pixels((edge, bottom), (w - 1, bottom)));
+            out.extend(line_pixels((0, 0), (0, bottom / 2)));
+            out.extend(line_pixels((w - 1, bottom / 2), (w - 1, bottom)));
+        }
+        // VERIFIED (ARM `Bell` frame): the wave-table type shows no picture.
+        Icon::Table => {}
         Icon::Multi => {
             let (half, last) = (w / 2, w - 1);
             for (x0, x1) in [(0, half - 1), (half, last)] {
@@ -181,8 +216,21 @@ pub(crate) fn paint(p: &Painter, disp: Rect, v: &OledView, title: &str) -> bool 
         OLED_BG,
     );
     text(&big, g.at(1, 14), Align2::LEFT_TOP, name, 11.0, FG_OLED);
-    if !ctrl.is_empty() {
-        text(&small, g.at(1, 28), Align2::LEFT_TOP, ctrl, 5.0, FG_OLED);
+    if let Some((label, value)) = ctrl.split_once(": ") {
+        // VERIFIED (ARM `Shape Triangle` frame): the label (`Shape:`, 5 px font, y = 29) and the
+        // value (`0.0`, 7 px font, y = 27, from x = 42) are two widgets; the column of the value
+        // is ASSUMED to be fixed for the other labels.
+        text(
+            &small,
+            g.at(1, 29),
+            Align2::LEFT_TOP,
+            &format!("{}:", mixed_case(label)),
+            5.0,
+            FG_OLED,
+        );
+        text(&bar, g.at(42, 27), Align2::LEFT_TOP, value, 8.0, FG_OLED);
+    } else if !ctrl.is_empty() {
+        text(&small, g.at(1, 29), Align2::LEFT_TOP, ctrl, 5.0, FG_OLED);
     }
     let (px, py, pw, ph) = PIC;
     for (x, y) in picture_pixels(*icon, pw, ph) {
@@ -198,7 +246,10 @@ pub(crate) fn paint(p: &Painter, disp: Rect, v: &OledView, title: &str) -> bool 
         let value = mixed_case(&s.value);
         text(
             &small,
-            g.at(centred(COLS[i], small.text_width(&value) as i32), 49),
+            g.at(
+                centred_value(VALUE_COLS[i], small.text_width(&value) as i32),
+                49,
+            ),
             Align2::LEFT_TOP,
             &value,
             5.0,
@@ -279,6 +330,39 @@ mod tests {
     }
 
     #[test]
+    fn a_triangle_has_two_flanks_meeting_at_the_middle_column() {
+        let px = picture_pixels(Icon::Triangle, 41, 22);
+        assert!(px.contains(&(20, 0)) && px.contains(&(0, 20)) && px.contains(&(40, 20)));
+        assert!(px.contains(&(10, 10)) && px.contains(&(30, 10)));
+        assert_eq!(px.len(), 41, "one pixel per column");
+    }
+
+    #[test]
+    fn a_narrow_pulse_has_its_edge_at_column_five_and_the_wave_table_has_no_picture() {
+        let px = picture_pixels(Icon::Pulse(0.1), 41, 22);
+        assert!((0..=5).all(|x| px.contains(&(x, 0))), "the high part");
+        assert!((0..=20).all(|y| px.contains(&(5, y))), "the falling edge");
+        assert!(px.contains(&(40, 20)) && px.contains(&(40, 10)) && px.contains(&(0, 10)));
+        assert!(!px.contains(&(0, 11)) && !px.contains(&(40, 9)));
+        assert!(picture_pixels(Icon::Table, 41, 22).is_empty());
+    }
+
+    #[test]
+    fn values_are_centred_with_the_shorter_half_on_the_left() {
+        assert_eq!(
+            centred_value(63, 24),
+            52,
+            "even width: one pixel right of c - w / 2"
+        );
+        assert_eq!(
+            centred_value(63, 19),
+            54,
+            "odd width: the same as c - w / 2"
+        );
+        assert_eq!(centred(63, 24), 51);
+    }
+
+    #[test]
     fn every_icon_stays_inside_the_picture_box() {
         for icon in [
             Icon::Sine,
@@ -291,7 +375,10 @@ mod tests {
             Icon::Table,
         ] {
             let px = picture_pixels(icon, 41, 22);
-            assert!(!px.is_empty());
+            assert!(
+                !px.is_empty() || icon == Icon::Table,
+                "only the table has no picture"
+            );
             assert!(px
                 .iter()
                 .all(|&(x, y)| (0..41).contains(&x) && (0..22).contains(&y)));

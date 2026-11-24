@@ -133,7 +133,9 @@ fn local_data(name: &str) -> Option<Frame> {
     if nord_core::oled_font::install_from_env().ok()? == 0 {
         return None;
     }
-    let file = if name == "bars" {
+    let file = if let Some(f) = name.strip_prefix("file:") {
+        f
+    } else if name == "bars" {
         "bars/press/press_d0.txt"
     } else if name.starts_with("home") {
         "icons/press/press_d0.txt"
@@ -288,6 +290,180 @@ fn the_synth_waveform_page_matches_the_arm_frame() {
         eprintln!("{}", show_diff(&ours, &arm, 0..64));
     }
     assert!(bad.is_empty(), "differs from the ARM frame: {bad:?}");
+}
+
+/// One captured waveform page: frame file, wave name, control text, picture, the three values
+/// (`None` when the strings of that capture did not name them: the values region is skipped),
+/// and whether the control line and the picture are compared. The pictures of `Super Saw`, `Sub
+/// Square Saw`, noise and the FM icon are firmware art that we do not copy (D20 / D128); our
+/// sketches of them differ from the frames and are not compared.
+struct Variant {
+    file: &'static str,
+    name: &'static str,
+    ctrl: &'static str,
+    icon: crate::panel::bay_synth::oled_types::Icon,
+    values: Option<[&'static str; 3]>,
+    ctrl_known: bool,
+    picture_known: bool,
+}
+
+/// The other pages of the waveform screen the three dials reach (`tools/arm_synth_dials.py` ->
+/// `synth_dials/`, and the one-step sweep of the dials -> `synth_sweep/`). The other Synth pages
+/// (filter, envelopes, LFO, arpeggiator) are knob pages the harness cannot drive.
+#[test]
+fn the_other_waveform_pages_match_the_arm_frames() {
+    use crate::panel::bay_synth::oled_types::{Graphic, Icon, OledView, Soft};
+    let v = |file, name, ctrl, icon, values, ctrl_known, picture_known| Variant {
+        file,
+        name,
+        ctrl,
+        icon,
+        values,
+        ctrl_known,
+        picture_known,
+    };
+    let tines = ["Wave", "Bells/Tines", "1 (6)"];
+    let variants = [
+        v(
+            "synth_dials/left_up",
+            "Bell",
+            "",
+            Icon::Table,
+            Some(tines),
+            true,
+            true,
+        ),
+        v(
+            "synth_dials/middle_up",
+            "Shape Triangle",
+            "Shape: 0.0",
+            Icon::Triangle,
+            Some(["Analog", "Shape", "1 (5)"]),
+            true,
+            true,
+        ),
+        v(
+            "synth_dials/right_up",
+            "Pure Pulse 10",
+            "",
+            Icon::Pulse(0.1),
+            Some(["Analog", "Pure", "6 (7)"]),
+            true,
+            true,
+        ),
+        v(
+            "synth_sweep/09_right",
+            "Bar 1",
+            "",
+            Icon::Table,
+            Some(["Wave", "Bells/Tines", "2 (6)"]),
+            true,
+            true,
+        ),
+        v(
+            "synth_sweep/10_right",
+            "Tines",
+            "",
+            Icon::Table,
+            Some(["Wave", "Bells/Tines", "4 (6)"]),
+            true,
+            true,
+        ),
+        v(
+            "synth_sweep/11_right",
+            "Tubular Bells",
+            "",
+            Icon::Table,
+            Some(["Wave", "Bells/Tines", "6 (6)"]),
+            true,
+            true,
+        ),
+        v(
+            "synth_sweep/03_mid",
+            "Super Saw",
+            "",
+            Icon::Multi,
+            None,
+            false,
+            false,
+        ),
+        v(
+            "synth_sweep/04_mid",
+            "Pink Noise",
+            "",
+            Icon::Noise,
+            None,
+            false,
+            false,
+        ),
+        v(
+            "synth_sweep/06_left",
+            "FM Harmonic A",
+            "",
+            Icon::Fm,
+            None,
+            false,
+            false,
+        ),
+    ];
+    let mut bad = Vec::new();
+    for var in variants {
+        let Some(arm) = local_data(&format!("file:{}_d1.txt", var.file)) else {
+            return;
+        };
+        let soft = |value: &str, label: &'static str| {
+            Some(Soft {
+                value: value.into(),
+                label,
+                dim: false,
+            })
+        };
+        let vals = var.values.unwrap_or(["", "", ""]);
+        let view = OledView {
+            title: "OSC WAVEFORM",
+            layer: 'A',
+            graphic: Graphic::Wave {
+                name: var.name.into(),
+                ctrl: var.ctrl.into(),
+                icon: var.icon,
+            },
+            soft: [
+                soft(vals[0], "TYPE"),
+                soft(vals[1], "CAT"),
+                soft(vals[2], "WAVE"),
+            ],
+        };
+        let ours = raster(|p, rect| {
+            oled_fw::paint(p, rect, &view, "OSC WAVEFORM");
+        });
+        let mut regions = vec![("title bar", (0, 0, W, 11)), ("name", (0, 11, W, 26))];
+        if var.ctrl_known {
+            regions.push(("ctrl line", (0, 26, 86, 48)));
+        }
+        if var.picture_known {
+            regions.push(("picture", (86, 26, W, 48)));
+        }
+        if var.values.is_some() {
+            regions.push(("values", (0, 48, W, 56)));
+        }
+        regions.push(("tabs", (0, 56, W, 64)));
+        for (n, r) in regions {
+            let d = diff(&ours, &arm, r);
+            eprintln!("{} {n}: {d} differing pixels", var.file);
+            if d > 0 {
+                bad.push((var.file, n, d));
+            }
+        }
+        if bad.iter().any(|b| b.0 == var.file) {
+            eprintln!(
+                "{}
+{}",
+                var.file,
+                show_diff(&ours, &arm, 11..64)
+            );
+        }
+    }
+    assert!(bad.is_empty(), "differs from the ARM frames: {bad:?}");
 }
 
 #[test]
