@@ -228,6 +228,29 @@ mod tests {
     }
 
     #[test]
+    fn set_keeps_the_saved_text_size() {
+        let c = cfg("keep-text-size");
+        user_config::save(
+            &c,
+            &UserConfig {
+                text_scale_percent: Some(175),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let img = std::env::temp_dir().join(format!("ns4-fwset-keep-{}.bin", std::process::id()));
+        std::fs::write(&img, crate::synth::fw_wave_tables::tests::image()).unwrap();
+        set(&img, &c).unwrap();
+        let saved = user_config::load(&c).unwrap();
+        assert_eq!(saved.text_scale_percent, Some(175));
+        assert!(saved.os_update_path.is_some());
+        clear(&c).unwrap();
+        let cleared = user_config::load(&c).unwrap();
+        assert_eq!(cleared.text_scale_percent, Some(175));
+        assert_eq!(cleared.os_update_path, None);
+    }
+
+    #[test]
     fn set_refuses_a_bad_file_and_stores_nothing() {
         let c = cfg("set-bad");
         let bad = std::env::temp_dir().join(format!("ns4-fwset-bad2-{}.bin", std::process::id()));

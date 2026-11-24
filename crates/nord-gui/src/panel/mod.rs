@@ -8,6 +8,8 @@ mod baked_audit_tests;
 mod baked_buttons;
 pub mod baked_view;
 pub mod baked_zoom;
+#[cfg(test)]
+mod baked_zoom_base_tests;
 mod bay_effects;
 mod bay_master;
 mod bay_organ;

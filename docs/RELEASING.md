@@ -75,7 +75,7 @@ A tag with a hyphen is published as a GitHub pre-release.
 - [ ] `python tools/check_licenses.py` passes (CI job `licenses`): no copyleft crate in the shipped `nord-plugin` tree, so the binaries can be distributed under PolyForm Noncommercial 1.0.0. The VST3 wrapper uses the MIT or Apache-2.0 `vst3` crate; bundling needs no extra tool (`cargo xtask bundle` as before, no libclang or VST3 SDK).
 - [ ] Dry run is green (next section) and the artifacts were downloaded and inspected at least once for this release.
 - [ ] `docs/HOST_COMPATIBILITY.md` is current. If a DAW test result changed, update the README wording in `RELEASE_README.txt`.
-- [ ] No `.reference/`, firmware, backup or preset files are staged (`git status`, and `tools/release_verify.py` enforces it for archives), and embedded firmware data (`fw-data-inventory`, e.g. `bass-fw-image.csv`, `farfisa-fw-image.csv`) has been migrated to runtime loading before tagging a public release.
+- [ ] No `.reference/`, firmware, backup or preset files are staged (`git status`, and `tools/release_verify.py` enforces it for archives), and embedded firmware data (`fw-data-inventory`, e.g. `vox_image.rs`, `synth-p-words.csv`) has been migrated to runtime loading before tagging a public release.
 - [ ] CI job `third-party-notices` is green: every crate license is in `about.toml` `accepted`. A new license needs a review of its terms first (add it to `accepted` in the PR that adds the dependency).
 - [ ] `ADDITIONAL-PERMISSIONS.md` and `TRADEMARKS.md` exist in the repo root (`python tools/license_check.py` tests pin their key phrases).
 - [ ] `LICENSE` file(s) exist in the repo root; `tools/release_package.py` includes any `LICENSE*` it finds.
