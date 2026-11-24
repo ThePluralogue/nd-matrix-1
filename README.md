@@ -43,7 +43,7 @@ Read the full specification suite in [`docs/`](docs/README.md):
 
 ## Download
 
-**Playing the GUI:** `nd-matrix-1` plays from a MIDI keyboard (first MIDI port, velocity passed through unchanged), the mouse (velocity 88) or the computer keyboard (`A S D F G H J K L ; '` white keys, `W E T Y U O P` black keys, `Z` / `X` octave, `C` / `V` velocity, `Space` sustain; see [GUI testing](docs/gui-testing.md)). **Small text?** Zoom the panel with `1`-`5` (a section), `0` / `Esc` (whole panel), `+` / `-` or the bar pills; all commands are in [Commands and zoom](docs/guides/commands.md) and on the `? HELP` screen.
+**Playing the GUI:** `nd-matrix-1` plays from a MIDI keyboard (first MIDI port, velocity passed through unchanged), the mouse (velocity 88) or the computer keyboard (`A S D F G H J K L ; '` white keys, `W E T Y U O P` black keys, `Z` / `X` octave, `C` / `V` velocity, `Space` sustain; see [GUI testing](docs/gui-testing.md)). **Small text?** Press `Ctrl +` (or click `A+` in the bar) for larger text, 100 to 200 %, saved for next time (menus, dialogs and the panel picture grow together; the panel then needs panning). Or zoom the panel with `1`-`5` (a section), `0` / `Esc` (whole panel), `+` / `-` or the bar pills; a two-row layout for bigger print without panning is planned (issue #592); all commands are in [Commands and zoom](docs/guides/commands.md) and on the `? HELP` screen.
 
 Tagged releases ship `ns4` (CLI), `nd-matrix-1` (GUI), `nd-matrix-1-standalone`, and the CLAP + VST3 DAW plugins in multiple formats (all with `.sha256` checksums):
 - **Windows (x86_64):** `-setup.exe` installer (with selectable GUI, CLI, VST3 & CLAP components) and portable `.zip`

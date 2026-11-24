@@ -16,6 +16,7 @@ pub mod panel;
 pub mod screenshot;
 pub mod style;
 pub mod telemetry;
+pub mod text_scale;
 pub mod widgets;
 
 #[cfg(test)]

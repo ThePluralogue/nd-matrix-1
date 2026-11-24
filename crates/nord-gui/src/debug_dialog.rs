@@ -26,17 +26,20 @@ const ACCENT_RED: Color32 = Color32::from_rgb(184, 37, 42);
 /// Apply a cohesive dark-zinc shadcn/ui theme to the Studio Settings viewport so all buttons,
 /// ComboBox popups, checkboxes, inputs, and highlights are crisp, opaque, and consistent.
 fn apply_shadcn_theme(ctx: &Context) {
+    // Every fixed size follows the text size option (`text_scale.rs`): this runs every frame and
+    // would otherwise put the 100 % spacing back after `text_scale::apply` scaled it.
+    let px = crate::text_scale::px;
     ctx.style_mut(|s| {
-        s.spacing.interact_size.y = 26.0;
-        s.spacing.button_padding = egui::vec2(10.0, 5.0);
-        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        s.spacing.combo_height = 240.0;
+        s.spacing.interact_size.y = px(26.0);
+        s.spacing.button_padding = egui::vec2(px(10.0), px(5.0));
+        s.spacing.item_spacing = egui::vec2(px(8.0), px(6.0));
+        s.spacing.combo_height = px(240.0);
         s.spacing.scroll = egui::style::ScrollStyle {
             floating: false,
-            bar_width: 6.0,
-            handle_min_length: 24.0,
-            bar_inner_margin: 4.0,
-            bar_outer_margin: 2.0,
+            bar_width: px(6.0),
+            handle_min_length: px(24.0),
+            bar_inner_margin: px(4.0),
+            bar_outer_margin: px(2.0),
             ..egui::style::ScrollStyle::solid()
         };
 
@@ -151,8 +154,17 @@ fn shadcn_card(ui: &mut Ui, title: &str, subtitle: &str, body: impl FnOnce(&mut 
         .inner_margin(Margin::same(14))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            ui.label(RichText::new(title).size(13.0).strong().color(ZINC_50));
-            ui.label(RichText::new(subtitle).size(11.0).color(ZINC_400));
+            ui.label(
+                RichText::new(title)
+                    .size(crate::text_scale::px(13.0))
+                    .strong()
+                    .color(ZINC_50),
+            );
+            ui.label(
+                RichText::new(subtitle)
+                    .size(crate::text_scale::px(11.0))
+                    .color(ZINC_400),
+            );
             ui.add_space(8.0);
             body(ui);
         });
@@ -228,7 +240,7 @@ fn render_dialog_contents(
             .vertical(|ui| {
                 ui.label(
                     RichText::new("Studio Settings & Diagnostics")
-                        .size(16.0)
+                        .size(crate::text_scale::px(16.0))
                         .strong()
                         .color(ZINC_50),
                 );
@@ -236,12 +248,12 @@ fn render_dialog_contents(
                     RichText::new(
                         "Firmware DSP options, MIDI & audio metering, and .ns4b backup tools.",
                     )
-                    .size(11.5)
+                    .size(crate::text_scale::px(11.5))
                     .color(ZINC_400),
                 );
             })
             .response;
-        let drag_w = (ui.available_width() - 62.0).max(16.0);
+        let drag_w = (ui.available_width() - crate::text_scale::px(62.0)).max(16.0);
         let (_, spacer_resp) =
             ui.allocate_exact_size(egui::vec2(drag_w, 34.0), egui::Sense::click_and_drag());
         let drag_rect = title_area.rect.union(spacer_resp.rect);
@@ -286,7 +298,7 @@ fn render_dialog_contents(
                         .add(
                             egui::Button::new(
                                 RichText::new(tab.label())
-                                    .size(11.5)
+                                    .size(crate::text_scale::px(11.5))
                                     .strong()
                                     .color(text_col),
                             )
@@ -383,7 +395,7 @@ fn render_dialog_contents(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Download Factory Bank v1.66 (.ns4b)")
-                                            .size(11.5)
+                                            .size(crate::text_scale::px(11.5))
                                             .strong()
                                             .color(ZINC_50),
                                     )
@@ -399,7 +411,7 @@ fn render_dialog_contents(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Open .ns4b Library")
-                                            .size(11.5)
+                                            .size(crate::text_scale::px(11.5))
                                             .color(ZINC_50),
                                     )
                                     .fill(ZINC_900)
@@ -416,7 +428,7 @@ fn render_dialog_contents(
                             RichText::new(
                                 "After downloading, drag & drop the .ns4b file onto the keyboard or load it from the Library & Backup tab.",
                             )
-                            .size(11.0)
+                            .size(crate::text_scale::px(11.0))
                             .color(ZINC_400),
                         );
                     },
@@ -432,7 +444,7 @@ fn render_dialog_contents(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Open Nord Stage 4 Downloads page")
-                                            .size(11.5)
+                                            .size(crate::text_scale::px(11.5))
                                             .strong()
                                             .color(ZINC_50),
                                     )
@@ -448,7 +460,7 @@ fn render_dialog_contents(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Open OS & Wave Tables Tab")
-                                            .size(11.5)
+                                            .size(crate::text_scale::px(11.5))
                                             .color(ZINC_50),
                                     )
                                     .fill(ZINC_900)
@@ -465,7 +477,7 @@ fn render_dialog_contents(
                             RichText::new(
                                 "Extract the .zip and select the Nord OS update file inside the OS & Wave Tables tab (saved automatically to your config).",
                             )
-                            .size(11.0)
+                            .size(crate::text_scale::px(11.0))
                             .color(ZINC_400),
                         );
                     },
@@ -510,8 +522,11 @@ pub fn show_debug_dialog(
         .with_title("ND Matrix 1 — Studio Settings & Diagnostics")
         .with_decorations(false)
         .with_transparent(true)
-        .with_inner_size([880.0, 520.0])
-        .with_min_inner_size([600.0, 340.0]);
+        .with_inner_size([
+            crate::text_scale::px(880.0).min(1600.0),
+            crate::text_scale::px(520.0).min(1000.0),
+        ])
+        .with_min_inner_size([crate::text_scale::px(600.0), crate::text_scale::px(340.0)]);
 
     ctx.show_viewport_immediate(viewport_id, builder, |vp_ctx, class| {
         if vp_ctx.input(|i| i.viewport().close_requested()) {
@@ -539,7 +554,7 @@ pub fn show_debug_dialog(
                 .title_bar(false)
                 .frame(rounded_frame)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .default_width(max_w.min(DIALOG_WIDTH))
+                .default_width(max_w.min(crate::text_scale::px(DIALOG_WIDTH)))
                 .max_size([max_w, max_h])
                 .vscroll(true)
                 .show(vp_ctx, |ui| {
@@ -602,6 +617,35 @@ pub fn show_debug_dialog(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_theme_spacing_follows_the_text_size() {
+        let ctx = Context::default();
+        for (pct, f) in [(100_u32, 1.0_f32), (150, 1.5), (200, 2.0)] {
+            let mut zoom = crate::panel::baked_zoom::BakedZoom::default();
+            crate::text_scale::apply(&ctx, crate::text_scale::TextScale::new(pct), &mut zoom);
+            apply_shadcn_theme(&ctx);
+            let s = ctx.style();
+            assert_eq!(s.spacing.interact_size.y, 26.0 * f, "{pct} %");
+            assert_eq!(
+                s.spacing.button_padding,
+                egui::vec2(10.0 * f, 5.0 * f),
+                "{pct} %"
+            );
+            assert_eq!(
+                s.spacing.item_spacing,
+                egui::vec2(8.0 * f, 6.0 * f),
+                "{pct} %"
+            );
+            assert_eq!(s.spacing.combo_height, 240.0 * f, "{pct} %");
+            assert_eq!(s.spacing.scroll.bar_width, 6.0 * f, "{pct} %");
+        }
+        crate::text_scale::apply(
+            &ctx,
+            crate::text_scale::TextScale::default(),
+            &mut Default::default(),
+        );
+    }
 
     #[test]
     fn the_embedded_dialog_fits_a_small_window() {
