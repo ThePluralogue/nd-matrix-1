@@ -8,6 +8,7 @@
 //! scheduler measures the compute side only: how long each core takes for a pass of its own
 //! (latency per core, and the tick wall time = the slowest core plus the barrier) when all cores
 //! run at the same time on separate host cores.
+use super::fx_run::FxDrive;
 use super::msg::{self, Msg};
 use super::pass::PassConfig;
 use super::system::{lean_pass, refresh_inputs, set_ping_pong};
@@ -82,6 +83,8 @@ pub struct PassJob {
     pub msgs: Vec<Msg>,
     pub msg_base: u32,
     pub ping_pong: Option<(u32, u32, u32)>,
+    /// FX chip core: the Core1 hand-over counter and ping selector before every pass.
+    pub fx: Option<FxDrive>,
     pub engine: Engine,
 }
 
@@ -140,6 +143,9 @@ pub fn run_ticks(jobs: Vec<PassJob>, warmup: u32, ticks: u32) -> Result<SchedRep
                         series.all_idle = false;
                     }
                     next_msg += 1;
+                }
+                if let Some(fx) = job.fx.as_mut() {
+                    fx.before_pass(&mut job.core);
                 }
                 refresh_inputs(&mut job.core);
                 let t0 = Instant::now();
@@ -220,6 +226,7 @@ mod tests {
             msgs: Vec::new(),
             msg_base: 0,
             ping_pong: None,
+            fx: None,
             engine,
         }
     }
@@ -243,6 +250,16 @@ mod tests {
             assert_eq!(c.ns.len(), 7);
         }
         assert_eq!(r.jobs.len(), 2);
+    }
+
+    #[test]
+    fn an_fx_job_gets_its_drive_before_every_tick() {
+        let mut j = poll_job("fx2", Engine::Interp);
+        j.fx = Some(FxDrive::new(super::super::fx_run::FX2));
+        let r = run_ticks(vec![j], 0, 4).unwrap();
+        // counter shown for pass 3 is 3, the core's own copy is counter + 1
+        let mut c = r.jobs.into_iter().next().unwrap().core;
+        assert_eq!(c.dm_read(super::super::fx_run::SELF_COUNTER), Ok(4));
     }
 
     #[test]
