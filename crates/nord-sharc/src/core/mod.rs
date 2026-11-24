@@ -162,6 +162,8 @@ pub struct Core {
     pub rwatch: u32,
     /// Register trace window `(lo, hi, limit)`: every step whose pc lies in `lo..=hi` logs R, S, I, M.
     pub trace: Option<(u32, u32, usize)>,
+    /// Data words `(address, count)` appended to every `trace` line (`count` 0 = none).
+    pub trace_dm: (u32, u32),
     /// Lines logged by `trace`.
     pub trace_log: Vec<String>,
     /// Number of consecutive words load-watched from `rwatch`.
@@ -302,6 +304,16 @@ impl Core {
         #[cfg(not(feature = "jit"))]
         {
             self.run(max_steps)
+        }
+    }
+
+    /// Advances the core by `cycles` cycles using the JIT when `use_jit` and the `jit` feature
+    /// are enabled, or the interpreter otherwise.
+    pub fn run_for_cycles(&mut self, cycles: u64, use_jit: bool) -> Option<Fault> {
+        if use_jit {
+            self.run_auto(cycles)
+        } else {
+            self.run(cycles)
         }
     }
 }
