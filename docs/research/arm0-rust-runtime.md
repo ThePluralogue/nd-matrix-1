@@ -71,7 +71,7 @@ Full execution (no skipping) costs 2.8 to 3.1 ms per tick (200,000 instructions,
 
 ## Implications
 
-* A native interpreter is enough for the mean and for key events; decision [D244](../DECISIONS.md).
+* A native interpreter is enough for the mean and for key events; decision [D245](../DECISIONS.md).
 * Idle skipping needs no firmware knowledge, so it keeps working on other OS images; it is exact on the 6 benchmark phases (state and message content), not proven in general.
 * Real-time use needs a decoupled ARM0 thread plus message queue, and a faster core if the load phase must also keep up.
 

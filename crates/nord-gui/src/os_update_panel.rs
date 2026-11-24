@@ -51,6 +51,8 @@ impl OsUpdatePanel {
         };
         self.message = Some(match firmware_setting::set(Path::new(text), &config) {
             Ok(n) => {
+                // the OLED shows the firmware fonts at once; a file without them keeps the fallback
+                let _ = nord_core::oled_font::install_from_path(Path::new(text));
                 self.status = firmware_setting::status(None, &config);
                 if self.status.path.as_ref().map(|(p, _)| p) == self.session.as_ref() {
                     format!("OK: {n} WAVE tables read.")
@@ -121,7 +123,8 @@ impl OsUpdatePanel {
         ui.label("2. Drop the downloaded file onto this window, click Browse, or paste its path:");
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            let input_w = (ui.available_width() - 196.0).max(180.0);
+            let input_w = (ui.available_width() - crate::text_scale::px(196.0))
+                .max(crate::text_scale::px(180.0));
             let field_h = ui.spacing().interact_size.y;
             let edit = ui.add(
                 egui::TextEdit::singleline(&mut self.input)

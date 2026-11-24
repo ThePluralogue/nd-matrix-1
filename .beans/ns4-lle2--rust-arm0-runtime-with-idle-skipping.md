@@ -27,7 +27,7 @@ ARM0 boots the user's OS update image in Rust and advances in real time (< 1 ms 
 Wiring live GUI controls (`ns4-lle6`); multi-chip SHARC audio routing (`ns4-lle4`).
 
 ## Summary of Changes
-- New crate `crates/nord-arm`: native ARM926EJ-S interpreter (ARM + Thumb), sparse memory, boot hooks, tick/GPIO/poll devices, panel, I2C EEPROMs, UART2 MIDI, incremental port grouping, DSP to ARM SPI return, exact idle skipping, one `WFI` semantic in both run paths. Decision D244 (Unicorn rejected: GPLv2, callbacks).
+- New crate `crates/nord-arm`: native ARM926EJ-S interpreter (ARM + Thumb), sparse memory, boot hooks, tick/GPIO/poll devices, panel, I2C EEPROMs, UART2 MIDI, incremental port grouping, DSP to ARM SPI return, exact idle skipping, one `WFI` semantic in both run paths. Decision D245 (Unicorn rejected: GPLv2, callbacks).
 - `arm-lle-bench` (`nord-tools`): OS v1.66 boot + program load + key events; timed region includes MIDI send, tick run and message drain. Mean 0.20 to 0.34 ms/tick. NOT every tick under 1 ms: 4.8 % of load ticks (longest run 32 ticks, backlog 73 ms) and 0.5 to 1.0 % of key-event ticks; all are real 200k-instruction ticks (no device polling, no arena growth). State hash and message content equal to full execution after every phase.
 - Review fixes: port grouping state persists across drains, stub returns set Thumb state from lr, logs capped, provenance tags, panics on bad input removed.
 - Docs: `docs/research/arm0-rust-runtime.md`, `docs/specs/arm0-runtime.md`, README index, ROADMAP Gate 1a split (core done, every-tick-under-1-ms open).

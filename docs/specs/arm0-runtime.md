@@ -1,6 +1,6 @@
 # ARM0 runtime (`crates/nord-arm`)
 
-Status: v0.1 (2026-11-23), bean `ns4-lle2`, decision [D244](../DECISIONS.md). Measurements: [arm0-rust-runtime](../research/arm0-rust-runtime.md).
+Status: v0.1 (2026-11-23), bean `ns4-lle2`, decision [D245](../DECISIONS.md). Measurements: [arm0-rust-runtime](../research/arm0-rust-runtime.md).
 
 Native Rust ARM926EJ-S (ARMv5TE) interpreter that boots the user's OS v1.66 ARM0 image with the hardware the Python harness stubbed. Opt-in crate (no dependencies, not linked by the audio engine). Firmware bytes are never committed: the tests use synthetic in-memory code.
 
@@ -36,7 +36,7 @@ Capped: `null_calls` (4096, `null_call_count` counts all), `Mem::auto_mapped` (4
 
 | Item | Status |
 |---|---|
-| Opt-in native core, choice recorded | done, D244 |
+| Opt-in native core, choice recorded | done, D245 |
 | Stubs ported, no Python callbacks | done (timer, ports, SPI read return partial: `ns4-lle5` for live layers) |
 | Idle / WFI / poll fast-forward | done; state and message content equal to full execution on the 6 benchmark phases |
 | Mean below 1.0 ms/tick on real boot + load + keys | done: 0.20 to 0.34 ms |
