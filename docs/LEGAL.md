@@ -39,11 +39,41 @@ for o in -a -el; do strings $o "$F" | grep -iE "license agreement|reverse engine
 
 The only match is the Microsoft C runtime line "Copyright (c) by P.J. Plauger, licensed by Dinkumware, Ltd. ALL RIGHTS RESERVED." It is not a Nord term.
 
+### Updater terms check: macOS `.dmg` (v1.66)
+
+On 2026-11-23 the local, git-ignored `Update Nord Stage 4 OS v1.66.dmg` (13,330,920 bytes, sha256 prefix `16dd08b9f47ad2ea`) was inspected. It was extracted with 7-Zip into a new empty scratch directory outside the repository; nothing in it was executed or committed.
+
+| Check | Result |
+|---|---|
+| DMG metadata (`koly` trailer, XML plist at offset 13,318,816) | Resource keys `blkx` and `plst` only. No licence-agreement resource (`sla `, `LPic`, `STR#`, `TEXT`, `RTF`) |
+| Volume contents (HFS+) | `.app` bundle, `bg-updater.tiff`, `.DS_Store`, `.fseventsd`. No licence, readme or terms file |
+| `Contents/Info.plist`, `_CodeSignature/CodeResources` | No licence or terms entry. Bundle id `com.nordkeyboards.NordOSUpdate` |
+| `strings -a` and `strings -el` on `Contents/MacOS/Nord OS Update` (22,076,656 bytes) | No match for `licen[sc]e`, `eula`, `agreement`, `reverse engineer`, `decompil`, `disassembl`, `all rights reserved`. Only third-party copyright lines (zlib, libjpeg, libpng) and a code-signing certificate line about "standard terms and conditions of use" |
+| `strings -a` on `Contents/Resources/os.cab` (4,037,080 bytes, the same size as the Windows update container) | 0 matches for `reverse engineer`, `decompil`, `eula`, `license agreement` |
+
+Result: the macOS updater, like the Windows `.exe`, shows no EULA text and no reverse-engineering or decompilation restriction in any file or string of the `.dmg`.
+
+### Vendor website check (nordkeyboards.com)
+
+On 2026-11-24 the following pages were read in a browser without logging in, accepting cookies or terms, or downloading any file:
+
+| Page | Finding |
+|---|---|
+| `https://www.nordkeyboards.com/downloads/` | Product picker only. No licence or terms text |
+| `https://www.nordkeyboards.com/products/nord-stage-4/downloads` | Lists "Update Nord Stage 4 OS v1.66.dmg" (macOS) and ".zip" (Windows), both dated 2026-08-25, with links to the update instructions PDF, manuals, factory restore files and the USB driver. No licence, terms or reverse-engineering text on the page |
+| `https://www.nordkeyboards.com/support/` | Warranty goes through distributors. No terms of use |
+| `https://www.nordkeyboards.com/support/privacy-policy/` | Privacy policy only. No match for terms of use, licence, reverse engineering, decompilation or copyright |
+| `/about-us/`, `/support/feedback/`, `/software/`, `/` | No match for the same terms |
+| Footer (every page) | Links: Products, Sounds, Downloads, Software, Artists, About Us, Distributors, Support, News, social links, "Cookie settings". Line: "Copyright © 2026 Clavia DMI AB. All rights reserved." There is no "Terms of use" or "Legal" link |
+| `/terms/`, `/terms-of-use/`, `/terms-and-conditions/`, `/legal/`, `/support/terms/`, `/support/terms-of-use/`, `/support/legal/`, `/support/license/` | HTTP 404 |
+
+The project now links the Stage 4 Downloads page ([guide](guides/nord-os-update.md), `firmware_setting::DOWNLOADS_PAGE`) instead of direct `.zip` and `.dmg` file links, so the user downloads from the vendor's own page. This is a factual record, not a legal conclusion.
+
 Limits:
 
-- Only the v1.66 `.exe` was checked. The `.dmg` and other OS versions were not.
-- The vendor website's terms of use and the download page were not checked.
-- A string search cannot prove the absence of terms shown at runtime (for example in an installer dialog built from resources `strings` does not decode) or on the web.
+- Only the v1.66 `.exe` and `.dmg` were checked. Older OS versions were not.
+- A string search cannot prove the absence of terms shown at runtime (for example in an installer dialog built from resources `strings` does not decode) or behind a download dialog. The updaters were not run.
+- The website was read on one day and may change. Only the pages above were read. Terms shown only to logged-in users or in a cookie or download dialog were not seen.
 
 ## 3. No circumvention
 
@@ -112,7 +142,7 @@ We respond promptly (target: acknowledge within 48 hours). A module, table, rele
 
 These are questions, not conclusions.
 
-1. Does the vendor's OS updater licence (EULA) contain terms on reverse engineering, decompilation or use of the update file, and if so, how do they interact with the interoperability and research purposes above? Finding so far: a string search of the v1.66 `.exe` found no EULA and no such restriction (section 2); the vendor website's terms of use, the download page, the `.dmg` and other versions were not checked.
+1. Does the vendor's OS updater licence (EULA) contain terms on reverse engineering, decompilation or use of the update file, and if so, how do they interact with the interoperability and research purposes above? Findings so far (section 2): a string search of the v1.66 `.exe` (2026-11-23) and an inspection of the v1.66 `.dmg` (2026-11-23: no licence resource, no EULA or reverse-engineering strings) found no EULA and no such restriction; the vendor's Downloads pages and site (2026-11-24) show no terms of use and no licence text, only a footer copyright line. Other OS versions and runtime-only dialogs were not checked.
 2. In the US, does 17 USC 1201(f) (reverse engineering for interoperability) cover this work, given that no technical protection measure is circumvented (section 3), and what does it say about publishing derived tables?
 3. In the EU, does Art. 6 of the Software Directive 2009/24/EC (decompilation for interoperability) apply, and what limits does it put on publishing what is learned?
 4. Which jurisdiction's rules apply to a project whose contributors and users are in several countries?
