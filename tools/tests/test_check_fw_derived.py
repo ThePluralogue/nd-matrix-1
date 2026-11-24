@@ -43,6 +43,7 @@ def test_new_derived_file_fails():
         "docs/research/data/pno-fw-image.csv",
         "crates/nord-core/src/fx/fw_new_tables.rs",
         "crates/nord-core/src/organ/x_fw/prog_new.rs",
+        "crates/nord-core/src/organ/x_fw/native_new.rs",
         "docs/research/data/other-tables.csv",
         "crates/nord-core/src/synth/p-words.txt",
     ):

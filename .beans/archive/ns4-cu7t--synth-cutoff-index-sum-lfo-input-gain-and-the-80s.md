@@ -1,6 +1,6 @@
 ---
 # ns4-cu7t
-title: Synth cutoff index sum: LFO and input gain terms, the 80s Sci-Fi base offset (D207)
+title: 'Synth cutoff index sum: LFO and input gain terms, the 80s Sci-Fi base offset (D207)'
 status: completed
 type: task
 created_at: 2026-11-21T18:00:00Z
