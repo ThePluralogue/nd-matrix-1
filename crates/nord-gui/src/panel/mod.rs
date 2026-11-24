@@ -41,6 +41,8 @@ mod legibility_leds;
 mod legibility_rules;
 #[cfg(test)]
 mod legibility_tests;
+#[cfg(test)]
+mod oled_arm_check;
 mod organ_drawbars;
 mod organ_layer;
 mod organ_logic;

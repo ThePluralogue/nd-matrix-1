@@ -26,8 +26,8 @@ const F_SMALL: usize = 8;
 const F_GLYPH: usize = 10;
 /// Wave picture box (VERIFIED frame): left, top, width, height in display pixels.
 const PIC: (i32, i32, i32, i32) = (87, 26, 41, 22);
-/// Centres of the three columns (VERIFIED frame: boxes x 7..29, 55..71, 99..121).
-const COLS: [i32; 3] = [18, 63, 110];
+/// Centres of the three columns (VERIFIED frame pixel check: tabs at x 7..30, 55..72, 98..121 = centre - width / 2).
+const COLS: [i32; 3] = [18, 63, 109];
 
 /// Display pixels to screen pixels on `disp`.
 struct Grid {
@@ -53,6 +53,12 @@ impl Grid {
             color,
         );
     }
+}
+
+/// Left edge of a `w` px wide item centred on `c`: integer division, as the firmware does
+/// (VERIFIED: the pixel check of the title, the values and the tabs).
+fn centred(c: i32, w: i32) -> i32 {
+    c - w / 2
 }
 
 /// Pixels of the line from `a` to `b` (Bresenham), both ends included.
@@ -82,35 +88,38 @@ pub(super) fn line_pixels(a: (i32, i32), b: (i32, i32)) -> Vec<(i32, i32)> {
 
 /// Wave picture pixels inside a `w` x `h` box (`(0, 0)` = top-left).
 ///
-/// A saw is one falling ramp whose vertical edge is the left side, like the captured frame; a
-/// multi saw shows two; the other waves use our sketch over two periods.
+/// A saw is the captured frame: a vertical left edge down to the ramp end and one falling ramp
+/// (VERIFIED by the ARM pixel check: Bresenham `(1, 1)` to `(w - 3, h - 3)`, then `(w - 2, h - 3)` and `(w - 1, h - 2)`,
+/// 0 differing pixels in the 41 x 22 box). A multi saw shows two ramps and the other waves use our
+/// sketch over two periods (ASSUMED: not compared with a frame yet).
 pub(super) fn picture_pixels(icon: Icon, w: i32, h: i32) -> Vec<(i32, i32)> {
-    let teeth = match icon {
-        Icon::Saw => Some(1.0_f32),
-        Icon::Multi => Some(2.0),
-        _ => None,
-    };
-    let pts: Vec<(f32, f32)> = match teeth {
-        // falling ramps; the phase is held just below 1.0 so the last column is the ramp bottom
-        Some(n) => {
-            let mut v = vec![(0.0, 0.0)]; // the vertical edge of the first tooth
-            v.extend((0..w).map(|i| {
-                let x = i as f32 / (w - 1).max(1) as f32;
-                (x, 1.0 - (x * n).min(n - 1e-3).fract())
-            }));
-            v
-        }
-        None => wave_points_n(icon, w as usize, 2.0),
-    };
-    let px = |p: (f32, f32)| {
-        (
-            (p.0 * (w - 1) as f32).round() as i32,
-            ((1.0 - p.1) * (h - 1) as f32).round() as i32,
-        )
-    };
     let mut out = Vec::new();
-    for pair in pts.windows(2) {
-        out.extend(line_pixels(px(pair[0]), px(pair[1])));
+    match icon {
+        Icon::Saw => {
+            out.extend(line_pixels((0, 0), (0, h - 2)));
+            out.extend(line_pixels((1, 1), (w - 3, h - 3)));
+            out.extend(line_pixels((w - 3, h - 3), (w - 2, h - 3)));
+            out.extend(line_pixels((w - 2, h - 3), (w - 1, h - 2)));
+        }
+        Icon::Multi => {
+            let (half, last) = (w / 2, w - 1);
+            for (x0, x1) in [(0, half - 1), (half, last)] {
+                out.extend(line_pixels((x0, 0), (x0, h - 2)));
+                out.extend(line_pixels((x0 + 1, 1), (x1, h - 2)));
+            }
+        }
+        _ => {
+            let pts = wave_points_n(icon, w as usize, 2.0);
+            for pair in pts.windows(2) {
+                let px = |p: (f32, f32)| {
+                    (
+                        (p.0 * (w - 1) as f32).round() as i32,
+                        ((1.0 - p.1) * (h - 1) as f32).round() as i32,
+                    )
+                };
+                out.extend(line_pixels(px(pair[0]), px(pair[1])));
+            }
+        }
     }
     out.sort_unstable();
     out.dedup();
@@ -143,7 +152,7 @@ pub(super) fn mixed_case(s: &str) -> String {
 }
 
 /// Paints the waveform page when it applies; `false` leaves the display to the fallback painter.
-pub(super) fn paint(p: &Painter, disp: Rect, v: &OledView, title: &str) -> bool {
+pub(crate) fn paint(p: &Painter, disp: Rect, v: &OledView, title: &str) -> bool {
     let Graphic::Wave { name, ctrl, icon } = &v.graphic else {
         return false;
     };
@@ -163,7 +172,14 @@ pub(super) fn paint(p: &Painter, disp: Rect, v: &OledView, title: &str) -> bool 
     p.rect_filled(disp, 2.0, OLED_BG);
     // title bar: lit rows 0..10, unlit title centred at y = 2
     g.block(p, (0, 0, 128, 11), FG_OLED);
-    text(&bar, g.at(64, 2), Align2::CENTER_TOP, title, 8.0, OLED_BG);
+    text(
+        &bar,
+        g.at(centred(63, bar.text_width(title) as i32), 2),
+        Align2::LEFT_TOP,
+        title,
+        8.0,
+        OLED_BG,
+    );
     text(&big, g.at(1, 14), Align2::LEFT_TOP, name, 11.0, FG_OLED);
     if !ctrl.is_empty() {
         text(&small, g.at(1, 28), Align2::LEFT_TOP, ctrl, 5.0, FG_OLED);
@@ -179,11 +195,12 @@ pub(super) fn paint(p: &Painter, disp: Rect, v: &OledView, title: &str) -> bool 
         } else {
             FG_OLED
         };
+        let value = mixed_case(&s.value);
         text(
             &small,
-            g.at(COLS[i], 49),
-            Align2::CENTER_TOP,
-            &mixed_case(&s.value),
+            g.at(centred(COLS[i], small.text_width(&value) as i32), 49),
+            Align2::LEFT_TOP,
+            &value,
             5.0,
             color,
         );
@@ -192,7 +209,7 @@ pub(super) fn paint(p: &Painter, disp: Rect, v: &OledView, title: &str) -> bool 
         match label_glyph(s.label).zip(font(F_GLYPH)) {
             Some((c, f)) => {
                 let w = f.text_width(&c.to_string()) as i32;
-                let at = g.at((COLS[i] - w / 2).clamp(0, 128 - w), 57);
+                let at = g.at(centred(COLS[i], w).clamp(0, 128 - w), 57);
                 draw_with(
                     p,
                     Some(&f),
@@ -206,7 +223,7 @@ pub(super) fn paint(p: &Painter, disp: Rect, v: &OledView, title: &str) -> bool 
             }
             None => {
                 let w = small.text_width(s.label) as i32 + 4;
-                let left = (COLS[i] - w / 2).clamp(0, 128 - w);
+                let left = centred(COLS[i], w).clamp(0, 128 - w);
                 g.block(p, (left, 57, w, 7), color);
                 text(
                     &small,
@@ -244,7 +261,7 @@ mod tests {
     fn a_saw_is_a_vertical_edge_on_the_left_and_a_ramp_falling_to_the_right() {
         let px = picture_pixels(Icon::Saw, 41, 22);
         // the whole left column is lit (the captured frame's vertical line)
-        assert!((0..22).all(|y| px.contains(&(0, y))));
+        assert!((0..21).all(|y| px.contains(&(0, y))));
         // one pixel per column from there on, falling from the top to the bottom row
         let col = |x: i32| {
             px.iter()
@@ -253,7 +270,11 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert!(col(1).first().is_some_and(|&y| y <= 1));
-        assert_eq!(col(40).last(), Some(&21));
+        assert_eq!(
+            col(40).last(),
+            Some(&20),
+            "the ramp ends one row above the box bottom"
+        );
         assert!(col(20).len() <= 2);
     }
 

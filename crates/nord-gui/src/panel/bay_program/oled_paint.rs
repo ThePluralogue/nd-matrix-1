@@ -59,7 +59,8 @@ pub fn paint(painter: &Painter, rect: Rect, text: &OledText, dim: bool) {
             let at = pos2(rect.right() - 2.0, y);
             oled_text::draw(painter, at, Align2::RIGHT_TOP, r, size, cell, color);
         }
-        let mut x = rect.left() + 2.0;
+        // VERIFIED (ARM frame pixel check): text boxes start at display x = 1.
+        let mut x = rect.left() + cell;
         // A section row starts with an icon in the 8 px column; its text begins at x = 12.
         let (icon, s) = match s.chars().next() {
             Some(c) if is_icon(c) => (Some(c), &s[c.len_utf8()..]),
@@ -67,7 +68,7 @@ pub fn paint(painter: &Painter, rect: Rect, text: &OledText, dim: bool) {
         };
         if let Some(c) = icon {
             let side = h * 8.0 / 64.0;
-            let cell = Rect::from_min_size(pos2(rect.left() + 0.5, y + 0.5), vec2(side, side));
+            let cell = Rect::from_min_size(pos2(rect.left(), y), vec2(side, side));
             oled_icons::paint(painter, cell, c, color);
             x = rect.left() + rect.width() * oled_icons::TEXT_X;
         }

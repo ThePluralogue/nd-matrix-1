@@ -47,15 +47,15 @@ const ORGAN: [u8; 8] = [
     0b1111_1111,
     0,
 ];
-/// Piano row icon (same source; rows 46 to 51: the frame shows six rows).
+/// Piano row icon (VERIFIED by the ARM pixel check: rows 46 to 52, five key rows, two solid).
 const PIANO: [u8; 8] = [
     0b1010_1101,
     0b1010_1101,
     0b1010_1101,
     0b1010_1101,
+    0b1010_1101,
     0b1111_1111,
     0b1111_1111,
-    0,
     0,
 ];
 /// Synth row icon (same source; rows 56 to 62, a ramp in a box).
@@ -154,13 +154,9 @@ mod tests {
     #[test]
     fn the_row_icons_have_the_lit_pixels_of_the_arm_frame() {
         let lit = |rows: &[u8; 8]| rows.iter().map(|r| r.count_ones()).sum::<u32>();
-        // counted on the ASCII dump of the real frame: 39, 36 and 46 lit pixels
-        assert_eq!((lit(&ORGAN), lit(&PIANO), lit(&SYNTH)), (39, 36, 46));
-        assert_eq!(
-            ORGAN[7] | PIANO[6] | PIANO[7] | SYNTH[7],
-            0,
-            "unused rows stay dark"
-        );
+        // counted on the ASCII dump of the real frame: 39, 41 and 46 lit pixels
+        assert_eq!((lit(&ORGAN), lit(&PIANO), lit(&SYNTH)), (39, 41, 46));
+        assert_eq!(ORGAN[7] | PIANO[7] | SYNTH[7], 0, "unused rows stay dark");
     }
 
     #[test]
