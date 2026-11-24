@@ -1,7 +1,7 @@
 ---
 # ns4-s3pn
 title: 'Remove in-GUI sponsorship button to keep strictly non-commercial posture'
-status: in-progress
+status: completed
 type: task
 priority: high
 created_at: 2026-11-23T21:25:00Z
@@ -17,7 +17,7 @@ The shipped application has zero monetization UI so the project remains unmistak
 
 ## Acceptance Criteria
 - [x] Remove the GitHub Sponsors button from the GUI (`crates/nord-gui`)
-- [ ] Owner decides whether to also remove the README Sponsors badge and `.github/FUNDING.yml`
+- [x] Owner decided: remove the README Sponsors badge and `.github/FUNDING.yml` (done)
 - [x] All quality gates pass
 
 ## Out of Scope
