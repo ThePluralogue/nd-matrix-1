@@ -62,7 +62,7 @@ Code: `audio/{priority,garbage,probe}.rs`, `audio/callback.rs`, `fx/master.rs`, 
 
 `ns4 bench --gui --backup <.ns4b> --program <entry> --reload N [--reload-pool K] [--program2 <entry>]` plays a chord, applies N programs in turn (the named ones, then K programs spread over the archive) with `apply_program` and times the call and the three blocks after it: the cost of a program change inside the callback and of the stages it builds lazily.
 
-## Engine selection (D245, `ns4-lle7`)
+## Engine selection (D246, `ns4-lle7`)
 
 HLE (this spec's engine) is the default. The opt-in low-level engine (LLE) does not exist yet; the selection seam does, so the final wiring is small.
 

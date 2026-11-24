@@ -1,4 +1,4 @@
-//! SHARC float precision of the opt-in LLE engine (bean `ns4-lle7`, D245; epic wording in PR #662).
+//! SHARC float precision of the opt-in LLE engine (bean `ns4-lle7`, D246; epic wording in PR #662).
 //!
 //! `Exact` emulates the 40-bit extended-precision float of the SHARC bit-for-bit and is the only
 //! mode used as the oracle. `Fast` runs the same lowered code with native `f32` for real-time play;
