@@ -21,8 +21,20 @@ pub struct UserConfig {
     pub os_update_path: Option<String>,
     /// Text size of the front ends in percent (100 to 200), `nord_gui::text_scale` (issue #592).
     /// Absent means 100. The front ends clamp and snap it; this file only stores it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient_percent"
+    )]
     pub text_scale_percent: Option<u32>,
+}
+
+/// A value that is not a non-negative whole number (`-5`, `150.5`, `"big"`, `null`) reads as absent,
+/// so a bad text size can never make the whole file unreadable (and `save` then drop the Nord OS
+/// update path next to it).
+fn lenient_percent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u32>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_u64().and_then(|n| u32::try_from(n).ok()))
 }
 
 /// Config directory for the given platform inputs (pure, for tests): Windows `%APPDATA%`, macOS
@@ -216,6 +228,20 @@ mod tests {
         let old = load(&path).unwrap();
         assert_eq!(old.text_scale_percent, None);
         assert_eq!(old.os_update_path.as_deref(), Some("C:/a.exe"));
+    }
+
+    #[test]
+    fn a_bad_text_size_is_ignored_and_the_other_settings_survive() {
+        let path = tmp("badsize");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        for bad in ["-5", "150.5", "\"big\"", "null", "99999999999", "[1]"] {
+            let text =
+                format!(r#"{{ "os_update_path": "C:/a.exe", "text_scale_percent": {bad} }}"#);
+            std::fs::write(&path, text).unwrap();
+            let cfg = load(&path).unwrap_or_else(|e| panic!("{bad}: {e}"));
+            assert_eq!(cfg.text_scale_percent, None, "{bad}");
+            assert_eq!(cfg.os_update_path.as_deref(), Some("C:/a.exe"), "{bad}");
+        }
     }
 
     #[test]

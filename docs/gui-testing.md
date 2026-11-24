@@ -269,8 +269,8 @@ renders exactly like a fresh Y, and that the Organ ladders are unlit while the s
 | Check | At sizes |
 |---|---|
 | Every bar label lies inside the window and its clip rectangle; no two overlap; none taller than the bar | 100, 125, 150, 175, 200 % |
-| Golden: the `DEBUG` pill text is 10 / 16 / 21 pt high (egui 0.31.1 bundled fonts) | 100, 150, 200 % |
-| The Studio Settings dialog (all five tabs) fits inside the default editor window | 100, 150, 200 % |
+| The `DEBUG` pill text is 10 / 16 / 21 pt high (EMPIRICAL, egui 0.31.1 bundled fonts) | 100, 150, 200 % |
+| The Studio Settings dialog (all five tabs) fits inside the editor window and its title grows with the size | 100, 150, 200 % |
 | The plate is magnified by the factor and starts at its left edge; `size_for_width` keeps the aspect under the taller bar | 100, 150, 200 % |
 | `Ctrl +` / `-` / `0` change and save the size, plain `+` does not | 100 to 150 % |
 

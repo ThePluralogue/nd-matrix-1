@@ -188,12 +188,13 @@ impl Stage4App {
             self.save_text_scale();
         }
         nord_gui::text_scale::apply(ctx, self.text_scale, &mut self.state.baked_zoom);
-        let min_w = nord_gui::text_scale::min_window_width();
+        let monitor = ctx.input(|i| i.viewport().monitor_size);
+        let min_w = nord_gui::text_scale::min_window_width(monitor.map(|m| m.x));
+        let min_h = nord_gui::text_scale::min_window_height(monitor.map(|m| m.y));
         if (min_w - self.min_width_sent).abs() > 0.5 {
             self.min_width_sent = min_w;
             ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
-                min_w,
-                nord_gui::text_scale::min_window_height(),
+                min_w, min_h,
             )));
         }
     }

@@ -26,17 +26,20 @@ const ACCENT_RED: Color32 = Color32::from_rgb(184, 37, 42);
 /// Apply a cohesive dark-zinc shadcn/ui theme to the Studio Settings viewport so all buttons,
 /// ComboBox popups, checkboxes, inputs, and highlights are crisp, opaque, and consistent.
 fn apply_shadcn_theme(ctx: &Context) {
+    // Every fixed size follows the text size option (`text_scale.rs`): this runs every frame and
+    // would otherwise put the 100 % spacing back after `text_scale::apply` scaled it.
+    let px = crate::text_scale::px;
     ctx.style_mut(|s| {
-        s.spacing.interact_size.y = 26.0;
-        s.spacing.button_padding = egui::vec2(10.0, 5.0);
-        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        s.spacing.combo_height = 240.0;
+        s.spacing.interact_size.y = px(26.0);
+        s.spacing.button_padding = egui::vec2(px(10.0), px(5.0));
+        s.spacing.item_spacing = egui::vec2(px(8.0), px(6.0));
+        s.spacing.combo_height = px(240.0);
         s.spacing.scroll = egui::style::ScrollStyle {
             floating: false,
-            bar_width: 6.0,
-            handle_min_length: 24.0,
-            bar_inner_margin: 4.0,
-            bar_outer_margin: 2.0,
+            bar_width: px(6.0),
+            handle_min_length: px(24.0),
+            bar_inner_margin: px(4.0),
+            bar_outer_margin: px(2.0),
             ..egui::style::ScrollStyle::solid()
         };
 
@@ -614,6 +617,35 @@ pub fn show_debug_dialog(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_theme_spacing_follows_the_text_size() {
+        let ctx = Context::default();
+        for (pct, f) in [(100_u32, 1.0_f32), (150, 1.5), (200, 2.0)] {
+            let mut zoom = crate::panel::baked_zoom::BakedZoom::default();
+            crate::text_scale::apply(&ctx, crate::text_scale::TextScale::new(pct), &mut zoom);
+            apply_shadcn_theme(&ctx);
+            let s = ctx.style();
+            assert_eq!(s.spacing.interact_size.y, 26.0 * f, "{pct} %");
+            assert_eq!(
+                s.spacing.button_padding,
+                egui::vec2(10.0 * f, 5.0 * f),
+                "{pct} %"
+            );
+            assert_eq!(
+                s.spacing.item_spacing,
+                egui::vec2(8.0 * f, 6.0 * f),
+                "{pct} %"
+            );
+            assert_eq!(s.spacing.combo_height, 240.0 * f, "{pct} %");
+            assert_eq!(s.spacing.scroll.bar_width, 6.0 * f, "{pct} %");
+        }
+        crate::text_scale::apply(
+            &ctx,
+            crate::text_scale::TextScale::default(),
+            &mut Default::default(),
+        );
+    }
 
     #[test]
     fn the_embedded_dialog_fits_a_small_window() {

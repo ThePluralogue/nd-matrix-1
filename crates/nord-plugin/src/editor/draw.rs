@@ -69,6 +69,8 @@ pub struct EditorState {
     pub text_scale: nord_gui::text_scale::TextScale,
     /// Where the text size is saved (`None`: no config directory, or a test).
     pub config_path: Option<std::path::PathBuf>,
+    /// Text size the window was last sized for (`None`: not yet, so the first frame sizes it).
+    pub sized_for: Option<nord_gui::text_scale::TextScale>,
 }
 
 impl EditorState {
@@ -105,6 +107,7 @@ impl EditorState {
             debug_dialog: DebugDialogState::default(),
             text_scale: nord_gui::text_scale::load(config_path.as_deref()),
             config_path,
+            sized_for: None,
         }
     }
 
@@ -170,7 +173,7 @@ fn show_dialogs(ctx: &Context, st: &mut EditorState) {
 
 /// Window size for a plate `width` wide: the plate aspect plus the top bar.
 pub fn size_for_width(width: f32) -> (u32, u32) {
-    let w = width.max(nord_gui::text_scale::px(MIN_WIDTH));
+    let w = width.max(nord_gui::text_scale::editor_min_width(MIN_WIDTH));
     (
         w.round() as u32,
         (w * PLATE_H / PLATE_W + nord_gui::text_scale::bar_height()).round() as u32,
@@ -210,6 +213,21 @@ pub(super) fn light_held_keys(handle: &AudioHandle, panel: &mut Stage4PanelState
     }
 }
 
+/// The bar height and the smallest width follow the text size, so a new size (or the first frame
+/// at a saved size) asks the host for the matching window: same width, aspect and bar height of
+/// the new size, never narrower than the bar needs. The host may refuse.
+fn size_window_for_text(egui_state: &EguiState, st: &mut EditorState) {
+    if st.sized_for == Some(st.text_scale) {
+        return;
+    }
+    st.sized_for = Some(st.text_scale);
+    let (w, h) = egui_state.size();
+    let target = size_for_width(w as f32);
+    if target != (w, h) {
+        egui_state.set_requested_size(target);
+    }
+}
+
 /// Draw one frame of the editor and forward the panel's edits to `writer`.
 pub fn draw_editor<W: ParamWriter>(
     ctx: &Context,
@@ -223,6 +241,7 @@ pub fn draw_editor<W: ParamWriter>(
         st.save_text_scale();
     }
     nord_gui::text_scale::apply(ctx, st.text_scale, &mut st.panel.baked_zoom);
+    size_window_for_text(egui_state, st);
 
     // The shared panel would otherwise drive egui's zoom itself; the editor shows the whole plate.
     st.panel.view.host_scaled = true;

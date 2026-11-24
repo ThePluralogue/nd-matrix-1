@@ -16,9 +16,10 @@
 //! The choice is stored as `text_scale_percent` in `<config dir>/ns4/config.json`
 //! (`nord_core::user_config`). Keys: `Ctrl +` / `Ctrl -` / `Ctrl 0`; bar pills `A-` `NNN%` `A+`.
 //!
-//! ASSUMED: 25 % steps and the 200 % ceiling. They keep the bar inside the 960 px minimum window
-//! at 150 % and give the baked plate an exact 1.25 / 1.5 / 1.75 / 2 magnification; no reference
-//! exists for what low-vision users need beyond the issue text. Confirm with the reporter.
+//! ASSUMED: 25 % steps and the 200 % ceiling. They give the baked plate an exact 1.25 / 1.5 / 1.75 / 2
+//! magnification and keep the top bar (about 800 points wide at 200 %, [`bar_content_width`]) inside
+//! a window a 1366 point screen can hold; no reference exists for what low-vision users need beyond
+//! the issue text. Confirm with the reporter.
 
 use crate::panel::baked_zoom::BakedZoom;
 use egui::{Context, Id, Key, Ui};
@@ -108,15 +109,34 @@ pub fn bar_height() -> f32 {
     px(BAR_HEIGHT_100)
 }
 
-/// Smallest window width that holds the bar at the size in force (960 points at 100 %).
-pub fn min_window_width() -> f32 {
-    px(960.0)
+/// Width the bar buttons need (zoom pills, text size pills, `OPEN .NS4B`, `DEBUG`, `? HELP`) at the
+/// size in force, in points: `268 + 265 x factor`.
+/// EMPIRICAL: right edge of the last bar label measured by `bar_text_stays_whole_and_apart_at_every_size`
+/// (nord-plugin `text_scale_tests.rs`): 530 / 663 / 797 pt at 100 / 150 / 200 %, fit within 1 pt
+/// (`bar_width_formula_covers_the_measured_bar`).
+pub fn bar_content_width() -> f32 {
+    268.0 + 265.0 * factor()
 }
 
-/// Smallest window height at the size in force: the bar plus the 228 points of plate that were
-/// the minimum at 100 % (250 points in all).
-pub fn min_window_height() -> f32 {
-    bar_height() + 228.0
+/// Smallest plugin editor width: 640 points, or the bar plus a margin when that is wider.
+pub fn editor_min_width(base: f32) -> f32 {
+    base.max(bar_content_width() + 40.0)
+}
+
+/// Smallest standalone window width at the size in force: 960 points at 100 %, more when the bar
+/// and the two window buttons need it, but never more than the monitor (`monitor_w`, points) so
+/// the window can always shrink onto the screen and the window buttons stay reachable.
+pub fn min_window_width(monitor_w: Option<f32>) -> f32 {
+    let need = bar_content_width() + px(2.0 * 22.0 + 15.0) + 60.0;
+    let w = 960.0_f32.max(need);
+    monitor_w.map_or(w, |m| w.min(m.max(320.0)))
+}
+
+/// Smallest standalone window height at the size in force: the bar plus the 228 points of plate
+/// that were the minimum at 100 % (250 points in all), never more than the monitor.
+pub fn min_window_height(monitor_h: Option<f32>) -> f32 {
+    let h = bar_height() + 228.0;
+    monitor_h.map_or(h, |m| h.min(m.max(200.0)))
 }
 
 /// Scale the fonts and spacing of `style` from egui's defaults by `f` (idempotent: always derived
@@ -168,6 +188,10 @@ pub fn apply(ctx: &Context, scale: TextScale, zoom: &mut BakedZoom) -> bool {
 
 /// Keys of this frame: `Ctrl +` (or `Ctrl =`) larger, `Ctrl -` smaller, `Ctrl 0` back to 100 %.
 pub fn handle_keys(ctx: &Context, scale: &mut TextScale) -> bool {
+    // Ctrl + / - inside a text field belongs to the field.
+    if ctx.wants_keyboard_input() {
+        return false;
+    }
     let next = ctx.input(|i| {
         if !i.modifiers.command {
             return None;
@@ -268,6 +292,81 @@ mod tests {
         assert_eq!(load(Some(&path)).percent(), 200);
         std::fs::write(&path, r#"{ "text_scale_percent": 3 }"#).unwrap();
         assert_eq!(load(Some(&path)).percent(), 100);
+    }
+
+    #[test]
+    fn the_minimum_window_never_exceeds_the_monitor_and_holds_the_bar() {
+        for pct in [100, 150, 200] {
+            apply(
+                &Context::default(),
+                TextScale::new(pct),
+                &mut BakedZoom::default(),
+            );
+            // A 1366 point screen: the window can always shrink onto it, at every size.
+            assert!(min_window_width(Some(1366.0)) <= 1366.0, "{pct} %");
+            assert!(min_window_height(Some(768.0)) <= 768.0, "{pct} %");
+            // Without a monitor the bar (and the two window buttons) still fit.
+            let need = bar_content_width() + px(2.0 * 22.0 + 15.0);
+            assert!(min_window_width(None) >= need.max(960.0), "{pct} %");
+        }
+        apply(
+            &Context::default(),
+            TextScale::new(200),
+            &mut BakedZoom::default(),
+        );
+        assert!(
+            min_window_width(Some(1024.0)) <= 1024.0,
+            "a small screen wins"
+        );
+        assert!(min_window_width(Some(10.0)) >= 320.0, "never degenerate");
+        apply(
+            &Context::default(),
+            TextScale::default(),
+            &mut BakedZoom::default(),
+        );
+        assert_eq!(min_window_width(None), 960.0, "100 %: the old minimum");
+        assert_eq!(min_window_height(None), 250.0);
+    }
+
+    #[test]
+    fn keys_do_nothing_while_a_text_field_has_the_keyboard() {
+        let ctx = Context::default();
+        let ctrl_plus = || egui::RawInput {
+            modifiers: egui::Modifiers::COMMAND,
+            events: vec![egui::Event::Key {
+                key: Key::Equals,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::COMMAND,
+            }],
+            ..Default::default()
+        };
+        let mut text = String::new();
+        let mut scale = TextScale::default();
+        // Focus a text field, then press Ctrl +.
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let r = ui.text_edit_singleline(&mut text);
+                r.request_focus();
+            });
+        });
+        let mut changed = true;
+        let _ = ctx.run(ctrl_plus(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.text_edit_singleline(&mut text);
+            });
+            changed = handle_keys(ctx, &mut scale);
+        });
+        assert!(
+            !changed && scale == TextScale::default(),
+            "typing owns Ctrl +"
+        );
+        // Without a focused field the same key works.
+        let ctx = Context::default();
+        let mut changed = false;
+        let _ = ctx.run(ctrl_plus(), |ctx| changed = handle_keys(ctx, &mut scale));
+        assert!(changed && scale.percent() == 125);
     }
 
     #[test]
