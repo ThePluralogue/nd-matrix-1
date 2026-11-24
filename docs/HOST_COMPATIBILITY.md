@@ -13,7 +13,7 @@ The **Nord Stage 4 DAW Plugin** (`nord-plugin`) brings the 3-engine, 7-layer Nor
 | **CLAP** | `.clap` | Linux, Windows, macOS | Bitwig Studio, Reaper, FL Studio |
 | **VST3** | `.vst3` | Windows, macOS, Linux | Ableton Live, Cubase, Studio One, Reaper, FL Studio |
 | **Audio Unit (AUv2)** | `.component` | macOS (Intel / Apple Silicon) | Logic Pro, MainStage, GarageBand |
-| **Standalone** | binary (`nord-plugin-standalone`) | Windows, Linux, macOS | Live gigging, latency calibration |
+| **Standalone** | binary (`nd-matrix-1-standalone`) | Windows, Linux, macOS | Live gigging, latency calibration |
 
 ---
 
@@ -101,7 +101,7 @@ cargo build --release -p nord-plugin
 
 - Linux CLAP: `target/release/libnord_plugin.so` (copy to `~/.clap/nord-stage-4.clap`)
 - Linux VST3: `target/release/libnord_plugin.so` (packaged into `~/.vst3/ND Matrix 1.vst3/Contents/x86_64-linux/ND Matrix 1.so`)
-- Standalone Binary: `target/release/nord-plugin-standalone`
+- Standalone Binary: `target/release/nd-matrix-1-standalone`
 
 ### macOS Audio Unit (AUv2) Packaging
 
@@ -227,7 +227,7 @@ Drives the `Plugin` trait the way nih-plug's wrappers do (initialize, process pe
 |---|---|
 | Any DAW (Reaper, Bitwig, Live, Cubase, Studio One, Logic) | No host available; section 3 stays "not host-tested". FL Studio: only the top bar and program load, see 7.9 |
 | VST3 | Validated headlessly with the Steinberg `validator` (7.10). Not loaded in any VST3 host |
-| Standalone wrapper (`nord-plugin-standalone`) | Needs an audio device; not run |
+| Standalone wrapper (`nd-matrix-1-standalone`) | Needs an audio device; not run |
 | AUv2 | Needs macOS and `clap-wrapper` |
 | Automation lanes, project save/load, editor open/close, HiDPI, window resize in a host | Need a host |
 | Multitimbral routing across 7 tracks, transport sync with a moving playhead | Need a host (the tempo is read from the transport in `process`; unit test only) |
