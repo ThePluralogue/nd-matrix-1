@@ -6,7 +6,7 @@ Each decision records **Context, Decision, Why, Alternatives, Impact**, plus **S
 
 | # | Date | Decision | Status |
 |---|---|---|---|
-| [D243](#d243-lle-is-opt-in-first-the-engine-selection-seam-ships-before-the-engine-retiring-class-bc-files-waits-for-gate-3-evidence) | 2026-11-23 | LLE is opt-in first: the engine-selection seam ships before the engine; retiring Class B/C files waits for Gate 3 evidence (updates D2 and D119) | proposed |
+| [D244](#d244-lle-is-opt-in-first-the-engine-selection-seam-ships-before-the-engine-retiring-class-bc-files-waits-for-gate-3-evidence) | 2026-11-23 | LLE is opt-in first: the engine-selection seam ships before the engine; retiring Class B/C files waits for Gate 3 evidence (updates D2 and D119) | proposed |
 | [D242](#d242-the-appimage-runtime-is-pinned-and-its-notices-ship-with-the-linux-release) | 2026-11-23 | The AppImage runtime is pinned to type2-runtime `20251108`; its license notices ship in the AppImage and the Linux archive, and the LGPL corresponding source is a release asset | accepted |
 | [D241](#d241-licensor-additional-permission-for-musicians-and-a-trademark-policy-ship-as-separate-files) | 2026-11-23 | Licensor additional permission for musicians and a trademark policy ship as separate files | accepted |
 | [D239](#d239-several-ns4b-banks-open-at-once-merged-catalog-exact-duplicates-skipped-name-conflicts-renamed-issue-564) | 2026-11-22 | Several `.ns4b` banks open at once: merged catalog, exact duplicates skipped, name conflicts renamed (issue #564) | proposed |
@@ -245,7 +245,7 @@ Each decision records **Context, Decision, Why, Alternatives, Impact**, plus **S
 - **Alternatives:** Low-level SHARC/ARM instruction emulator (blocked by missing bootrom and custom inter-DSP buses).
 - **Impact:** Firmware parser (`firmware.rs`) is used for static inspection and table extraction; audio synthesis runs natively in `nord-core`.
 - **Update 2026-11-13:** the engine stays HLE. The SHARC core model in `crates/nord-sharc` is a test oracle for single routines and passes, not a runtime emulator ([D18](#d18-rust-sharc-oracle-validated-against-the-adi-cycle-accurate-simulator)); the original blocker (no boot ROM) does not apply because the oracle loads the images the way the ARM loads them.
-- **Update 2026-11-23 (proposed, [D243](#d243-lle-is-opt-in-first-the-engine-selection-seam-ships-before-the-engine-retiring-class-bc-files-waits-for-gate-3-evidence)):** HLE stays the default engine; an opt-in LLE engine may be added next to it, not instead of it, until Gate 3 evidence says otherwise.
+- **Update 2026-11-23 (proposed, [D244](#d244-lle-is-opt-in-first-the-engine-selection-seam-ships-before-the-engine-retiring-class-bc-files-waits-for-gate-3-evidence)):** HLE stays the default engine; an opt-in LLE engine may be added next to it, not instead of it, until Gate 3 evidence says otherwise.
 
 ### D3. Pure physical modeling for the Organ Engine (91 tonewheels + Rotary 122)
 
@@ -1395,7 +1395,7 @@ Opt-in `mod2` ENS audio follows knob words; opt-in `mod1` RM A-WAH rate follow o
 - **Why:** The real stream is the only way to know which ORG code runs after a program load and whether a key press reaches ORG at all; the measurement gives the first whole-system real-time figure before any optimisation (D118 whole-pass AOT) is judged.
 - **Alternatives:** Keep the poke proxy (rejected: the real load runs 6,377 steps per pass and a different code range, the proxy runs 4,265 to 5,953 and never the real one); model the audio and external-port DMA first (rejected for this step: needs the register map, open); extend `sharc-org` instead of a new binary (rejected: it snapshots 0.7 M words per pass, which would distort the timing).
 - **Impact:** `crates/nord-sharc` (`runner/system.rs`, bin `sharc-sys`, one `pub mod` line in `runner/mod.rs`), `tools/arm_org_stream.py`, `tools/org_system_timing.py` (+ tests), `docs/research/org-system-run.md`, `docs/research/data/org-system-*`, [sharc-core](specs/sharc-core.md) section 7. No engine, golden, `render_hash` or default change.
-- **Update 2026-11-23 (proposed, [D243](#d243-lle-is-opt-in-first-the-engine-selection-seam-ships-before-the-engine-retiring-class-bc-files-waits-for-gate-3-evidence)):** the opt-in rule stands. User-facing selection is `--engine lle` / the Settings toggle, never a default.
+- **Update 2026-11-23 (proposed, [D244](#d244-lle-is-opt-in-first-the-engine-selection-seam-ships-before-the-engine-retiring-class-bc-files-waits-for-gate-3-evidence)):** the opt-in rule stands. User-facing selection is `--engine lle` / the Settings toggle, never a default.
 
 ### D120. DSP peripherals for the system run: an opt-in range-register block, a census and a lane capture; the PNO lane is live, ORG Core2 stays silent
 
@@ -2613,7 +2613,18 @@ The rate matches in all three; the score of the clock word is better than flag o
 - **Limits:** libfuse is LGPL-2.1 and static: the source asset implements the owner's option A; whether it satisfies section 6 awaits counsel (LEGAL.md question 9, bean `ns4-ns2j`). The squashfuse sha256 is upstream's own pin from `install-dependencies.sh` and was not downloadable where this was written, so the first release run is its first check. mimalloc and musl versions are the Alpine 3.21 packages and were not verified because `gitlab.alpinelinux.org` is blocked in the build environment. Bumping the runtime needs a new sha256, a review of its `LICENSE` and build scripts, and an update of `licenses/appimage-runtime/`.
 - **Impact:** `.github/workflows/release.yml`, `tools/release_package.py`, `tools/release_installers.py`, `tools/release_runtime_sources.py`, `tools/release_verify.py` (+ tests), `licenses/appimage-runtime/`, `docs/LEGAL.md` sections 4 and 8, `docs/RELEASING.md`, bean `ns4-sgro`.
 
-### D243. LLE is opt-in first: the engine-selection seam ships before the engine; retiring Class B/C files waits for Gate 3 evidence
+### D243. A held `.npno` note fades out over the last 0.25 s of its stroke instead of stopping (issue #640)
+
+- **Status:** accepted 2026-11-23
+- **Decided by:** the repo owner (chose "Fade tail out" over "Loop sample tail" in session)
+- **Context:** `.npno` strokes carry no loop points (`NpnoStroke::loop_start` / `loop_end` are `None`) and the engine freed a voice at the last decoded frame. Library notes are 3.7 to 5.8 s long (stroke 513 of Astoria Grand: 162,532 frames = 4.64 s at 35 kHz, oracle run below), so a note held longer ended with a sudden cut, higher notes first, while the key-up sample still played on pedal release. Reported in issue #640.
+- **Decision:** `piano/tail_fade.rs` scales every non-release sample voice by a raised-cosine gain over the last `0.25 s` of its stroke (at most the last quarter of a short stroke). Release (key-up) strokes are untouched.
+- **Why:** hides the cut with no change to notes shorter than the sample. The hardware end-of-sample behaviour is unmeasured, so the fade is the smallest change that removes the artefact.
+- **Alternatives:** loop the sample tail (rejected: no evidence the hardware loops a factory stroke, risks an audible loop artefact); leave as is (rejected: reported as a bug).
+- **Limits:** ASSUMED length and shape. The firmware frees a non-looping voice at counter `F-9` and wraps at `F-8` by `F-7` ([smp-slew](research/smp-slew.md) s3, VERIFIED), but whether a factory stroke sets a loop is still unread. The ARM+SHARC run (80,000 key ticks, Astoria Grand) confirmed the stroke lengths; its tap gate closes after about 24,000 words (D235), so the end of the stream was not observable there.
+- **Impact:** `crates/nord-core/src/piano.rs`, `piano/tail_fade.rs` (+ tests); `specs/piano-engine.md` s9a; `research/piano-decay-attack.md`.
+
+### D244. LLE is opt-in first: the engine-selection seam ships before the engine; retiring Class B/C files waits for Gate 3 evidence
 
 - **Status:** proposed 2026-11-23
 - **Context:** Epic `ns4-lle1` plans a real-time low-level engine (LLE: ARM0 plus five SHARC DSP images from the user's own Nord OS update file). [D2](#d2-high-level-dsp-emulation-over-low-level-sharc-instruction-emulation) makes the high-level Rust engine (HLE) primary; [D119](#d119-the-sharc-oracle-becomes-the-dsp-half-of-a-minimal-system-run-opt-in-org-core2-only-no-default-change) keeps the SHARC system run opt-in. Bean `ns4-lle7` asks whether LLE replaces HLE and, with it, the firmware-derived Class B/C files (`ns4-u8o2`, `ns4-eh57`, D128). The LLE engine does not exist, no real-time benchmark exists, and DAW-host stability is unmeasured.
