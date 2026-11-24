@@ -2,7 +2,9 @@
 //! remember it, report whether the WAVE tables load. Reads the file on demand; stores only its path.
 
 use crate::render_opts_wave::WAVE_TABLES_ENV;
-use crate::user_config::{self, UserConfig};
+use crate::user_config;
+#[cfg(test)]
+use crate::user_config::UserConfig;
 use std::path::{Path, PathBuf};
 
 /// The vendor's Nord Stage 4 Downloads page, where the user picks the OS update for their platform
@@ -67,18 +69,18 @@ pub fn set(path: &Path, config: &Path) -> Result<usize, String> {
     let abs = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = abs.to_string_lossy();
     let shown = shown.strip_prefix(r"\\?\").unwrap_or(&shown).to_string();
-    user_config::save(
-        config,
-        &UserConfig {
-            os_update_path: Some(shown),
-        },
-    )?;
+    // Keep the other saved settings (text size): only the path changes.
+    let mut saved = user_config::load(config).unwrap_or_default();
+    saved.os_update_path = Some(shown);
+    user_config::save(config, &saved)?;
     Ok(n)
 }
 
 /// Forgets the saved path.
 pub fn clear(config: &Path) -> Result<(), String> {
-    user_config::save(config, &UserConfig::default())
+    let mut saved = user_config::load(config).unwrap_or_default();
+    saved.os_update_path = None;
+    user_config::save(config, &saved)
 }
 
 /// Plain-language text of a [`Status`] for the CLI and the GUI.
@@ -205,6 +207,7 @@ mod tests {
             &c,
             &UserConfig {
                 os_update_path: Some("/saved".into()),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -228,6 +231,29 @@ mod tests {
         assert_eq!(s.path.as_ref().unwrap().1, Source::Saved);
         assert_eq!(s.tables, Some(Ok(46)));
         assert!(describe(&s).contains("OK: 46 WAVE tables"));
+    }
+
+    #[test]
+    fn set_keeps_the_saved_text_size() {
+        let c = cfg("keep-text-size");
+        user_config::save(
+            &c,
+            &UserConfig {
+                text_scale_percent: Some(175),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let img = std::env::temp_dir().join(format!("ns4-fwset-keep-{}.bin", std::process::id()));
+        std::fs::write(&img, crate::synth::fw_wave_tables::tests::image()).unwrap();
+        set(&img, &c).unwrap();
+        let saved = user_config::load(&c).unwrap();
+        assert_eq!(saved.text_scale_percent, Some(175));
+        assert!(saved.os_update_path.is_some());
+        clear(&c).unwrap();
+        let cleared = user_config::load(&c).unwrap();
+        assert_eq!(cleared.text_scale_percent, Some(175));
+        assert_eq!(cleared.os_update_path, None);
     }
 
     #[test]
@@ -258,6 +284,7 @@ mod tests {
             &c,
             &UserConfig {
                 os_update_path: Some("/x".into()),
+                ..Default::default()
             },
         )
         .unwrap();
