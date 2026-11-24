@@ -85,6 +85,8 @@ fn k{id}(core: &mut Core) {{ core.aot_pe_both(ComputeOp::{c:?}, Kern::{kern}); }
             }
         }
     }
+    let mut handlers: BTreeMap<String, usize> = BTreeMap::new();
+    let mut hdefs = String::new();
     for (bi, b) in blocks.iter().enumerate() {
         let code: Vec<String> = b
             .code
@@ -128,10 +130,38 @@ fn k{id}(core: &mut Core) {{ core.aot_pe_both(ComputeOp::{c:?}, Kern::{kern}); }
                                 }
                                 _ => "None".to_string(),
                             };
+                            // one out-of-line handler per distinct shape (the transfer without
+                            // its immediate, the kernel, the instruction kind and length): the
+                            // code a pass runs once per site is then a short call, and the
+                            // handler bodies stay resident in the instruction cache
+                            let shape = x.to_rust_with(Some("imm"));
+                            let key = format!("{shape}|{fast}|{:?}|{}", e.kind, e.next - e.pc);
+                            let id = match handlers.get(&key) {
+                                Some(&id) => id,
+                                None => {
+                                    let id = handlers.len();
+                                    let _ = writeln!(
+                                        hdefs,
+                                        "#[inline(never)]
+#[allow(unused_variables)]
+fn h{id}(core: &mut Core, pc: u32, imm: u32) -> Result<(), Fault> {{
+    core.pc = pc;
+    core.aot_xfer(&{shape}, pc, {fast})?;
+    core.aot_tail(pc, Kind::{:?}, pc + {});
+    Ok(())
+}}",
+                                        e.kind,
+                                        e.next - e.pc
+                                    );
+                                    handlers.insert(key, id);
+                                    id
+                                }
+                            };
                             let _ = writeln!(
                                 body,
-                                "    core.pc = 0x{:x}; core.aot_xfer(&{}, 0x{:x}, {})?; core.aot_tail(0x{:x}, Kind::{:?}, 0x{:x});",
-                                e.pc, x.to_rust(), e.pc, fast, e.pc, e.kind, e.next
+                                "    h{id}(core, 0x{:x}, 0x{:x})?;",
+                                e.pc,
+                                x.imm().unwrap_or(0)
                             );
                         }
                         None => {
@@ -218,6 +248,7 @@ fn run_{bi}(core: &mut Core) -> Result<(), Fault> {{
             }
         );
     }
+    out.push_str(&hdefs);
     let _ = writeln!(out, "static BLOCKS: [AotBlock; {}] = [", blocks.len());
     for (bi, b) in blocks.iter().enumerate() {
         let native: u32 = b
@@ -313,5 +344,27 @@ mod tests {
             src.contains("Kern::Exact") && src.contains("steps: 3"),
             "{src}"
         );
+    }
+
+    #[test]
+    fn sites_of_one_shape_share_one_handler_and_pass_their_immediate() {
+        // three `R0 = DM(I2, M2)` loads and a `R1 = DM(-6, I1)` (T15b offset form) twice
+        let load = (0b1001u16 << 12) | (2 << 9) | (2 << 6) | (1 << 4);
+        let mut p = vec![load, load, load];
+        p.extend_from_slice(&[0x9208, 0x007a]);
+        p.extend_from_slice(&[0x9208, 0x007b]);
+        let c = core_with(&p);
+        let mut ex = std::collections::BTreeMap::new();
+        let mut pc = c.pc;
+        for k in 0..5 {
+            ex.insert(pc, k == 0);
+            pc += c.fetch(pc).insn.len as u32;
+        }
+        let src = c.emit_whole_pass_rust(&ex, &[], AotTier::Pe).unwrap();
+        let handlers = src.matches("fn h").count();
+        assert_eq!(handlers, 2, "{src}");
+        assert_eq!(src.matches("h0(core, ").count(), 3, "{src}");
+        assert_eq!(src.matches("h1(core, ").count(), 2, "{src}");
+        assert!(src.contains("Addr::PreImm(imm)"), "{src}");
     }
 }
