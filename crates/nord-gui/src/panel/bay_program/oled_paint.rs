@@ -194,29 +194,20 @@ pub fn paint(painter: &Painter, rect: Rect, text: &OledText, dim: bool) {
             ],
             Stroke::new(0.5_f32, fg),
         );
-        // B3 drawbars as mini bars (firmware bar font), right-aligned above the rule.
-        // ASSUMED placement: top y = 22, right edge x = 126 (a unit photo shows them there).
+        // B3 drawbars as mini bars (firmware bar font), hanging from the rule at the right of the
+        // organ row. EMPIRICAL: measured on a unit photo (rule y = 33, bars from y = 34 down,
+        // right edge at x = 121); the photo shows more bars than nine (both organ layers?), not
+        // modelled.
         if let (Some(bars), Some(face)) = (
             text.bars,
             nord_core::oled_font::font(nord_core::oled_font::BAR_FONT_INDEX),
         ) {
-            let chars = super::oled_home::bar_chars(&bars);
-            // The name is clipped where the bars start (two display pixels of margin).
-            let left = 126.0 - face.text_width(&chars) as f32 - 2.0;
-            painter.rect_filled(
-                Rect::from_min_max(
-                    pos2(rect.left() + left * cell, top + g.name_y),
-                    pos2(rect.right(), top + g.rule_y),
-                ),
-                0.0,
-                OLED_BG,
-            );
             oled_text::draw_with(
                 painter,
                 Some(&face),
-                pos2(rect.left() + 126.0 * cell, top + 22.0 * cell),
+                pos2(rect.left() + 121.0 * cell, top + g.rule_y + cell),
                 Align2::RIGHT_TOP,
-                &chars,
+                &super::oled_home::bar_chars(&bars),
                 f_row,
                 cell,
                 fg,
