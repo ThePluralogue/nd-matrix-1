@@ -95,7 +95,14 @@ impl Core {
     /// native lowering).
     #[inline(never)]
     pub(super) fn aot_step(&mut self, pc: u32) -> Result<(), Fault> {
+        use super::aot_prof::{aot_prof_on, aot_prof_step, tsc, GENERIC};
         self.pc = pc;
+        if aot_prof_on() {
+            let t = tsc();
+            let r = self.step();
+            aot_prof_step(pc, GENERIC, tsc() - t);
+            return r;
+        }
         self.step()
     }
 

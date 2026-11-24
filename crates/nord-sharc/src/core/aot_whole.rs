@@ -90,7 +90,7 @@ fn terminator(op: &DecodedOp) -> Option<u32> {
 
 impl Core {
     /// Parcels of the instruction at `pc`, its class for block building.
-    fn whole_decode(&self, pc: u32) -> (u32, DecodedOp, Kind, [u16; 3], u64) {
+    pub(super) fn whole_decode(&self, pc: u32) -> (u32, DecodedOp, Kind, [u16; 3], u64) {
         let d = self.fetch(pc);
         let op = DecodedOp::from_insn(pc, &d.insn, d.w);
         (d.insn.len as u32, op, d.insn.kind, d.insn.parcels, d.w)

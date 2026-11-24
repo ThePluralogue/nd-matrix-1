@@ -31,15 +31,42 @@ pub fn lean_pass_aot(core: &mut Core, cfg: &PassConfig) -> (u64, bool) {
     super::system::start(core, cfg);
     let start = core.steps;
     let limit = start + cfg.max_steps;
+    use crate::core::aot_prof::{
+        aot_prof_on, aot_prof_pass, aot_prof_step, tsc, MID_BLOCK, REFUSED, UNBLOCKED,
+    };
+    let prof = aot_prof_on();
+    let (t_pass, mut try_cycles) = (if prof { tsc() } else { 0 }, 0u64);
     while core.steps < limit {
-        if core.aot_try(limit) {
+        let t = if prof { tsc() } else { 0 };
+        let entered = core.aot_try(limit);
+        if entered {
+            if prof {
+                try_cycles += tsc() - t;
+            }
             if core.aot_take_fault().is_some() {
+                return (core.steps - start, false);
+            }
+        } else if prof {
+            let cause = if core.aot_at_block_start() {
+                REFUSED
+            } else if core.aot_pc_in_block() {
+                MID_BLOCK
+            } else {
+                UNBLOCKED
+            };
+            let (pc, t) = (core.pc, tsc());
+            let r = core.step();
+            aot_prof_step(pc, cause, tsc() - t);
+            if r.is_err() {
                 return (core.steps - start, false);
             }
         } else if core.step().is_err() {
             return (core.steps - start, false);
         }
         if core.pc == cfg.idle_pc && core.dm_read(cfg.trigger) == Ok(0) {
+            if prof {
+                aot_prof_pass(tsc() - t_pass, try_cycles);
+            }
             return (core.steps - start, true);
         }
     }

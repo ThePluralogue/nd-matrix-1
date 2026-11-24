@@ -7,7 +7,8 @@
 //!
 //! `NORD_SHARC_AOT_HOT=TAG=<file.rs>;TAG2=<file2.rs>` embeds several modules, one per image and
 //! tier (`sharc-aot --whole-pass`), each in its own namespace; `Core::enable_aot_tag("TAG")`
-//! picks one (a pass benchmark runs one image per core, and their pcs overlap).
+//! picks one (a pass benchmark runs one image per core, and their pcs overlap). The first module
+//! is also the one `sharc_jit_diff --aot-top` enables.
 use std::{env, fs, path::PathBuf};
 
 const STUB: &str = "use crate::core::aot_hot::AotBlock;\n\
@@ -18,7 +19,8 @@ pub(super) fn tags() -> &'static [&'static str] {\n    &[]\n}\n";
 /// Source of a combined module for `TAG=file;TAG=file`.
 fn multi(spec: &str) -> String {
     let mut src = String::from("use crate::core::aot_hot::AotBlock;\n");
-    src.push_str("pub(super) fn blocks() -> &'static [AotBlock] {\n    &[]\n}\n");
+    // blocks() is the first module: what sharc_jit_diff --aot-top enables
+    src.push_str("pub(super) fn blocks() -> &'static [AotBlock] {\n    m0::blocks()\n}\n");
     let (mut arms, mut tags) = (String::new(), Vec::new());
     for (i, part) in spec.split(';').filter(|p| !p.is_empty()).enumerate() {
         let (tag, path) = part

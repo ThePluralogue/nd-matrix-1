@@ -2,9 +2,12 @@
 //! code snapshot per lowered block, plus the `blocks()` table `aot_hot.rs` includes at build time
 //! (`NORD_SHARC_AOT_HOT=<file>`). Generated text is derived from firmware and never committed.
 use super::aot_lower::{AotTier, Item, Lowered, LoweredOp, MIN_BATCH};
+use super::aot_mem::MemXfer;
+use super::aot_pe::pe_supports;
 use super::aot_whole::Chk;
 use super::decode_cache::ComputeOp;
 use super::Core;
+use std::collections::BTreeMap;
 use std::fmt::Write;
 
 fn kern_name(tier: AotTier) -> &'static str {
@@ -60,6 +63,28 @@ pub(super) fn emit_module(blocks: &[Lowered], tier: AotTier) -> String {
     ] {
         let _ = writeln!(out, "use {i};");
     }
+    // one out-of-line Pe kernel per distinct supported compute op used by a lowered transfer
+    let mut kernels: BTreeMap<String, usize> = BTreeMap::new();
+    for b in blocks {
+        for item in &b.items {
+            if let Item::Step(e) = item {
+                if let Some(MemXfer {
+                    compute: Some(c), ..
+                }) = &e.xfer
+                {
+                    if pe_supports(*c) && !kernels.contains_key(&format!("{c:?}")) {
+                        let id = kernels.len();
+                        let _ = writeln!(
+                            out,
+                            "#[inline(never)]
+fn k{id}(core: &mut Core) {{ core.aot_pe_both(ComputeOp::{c:?}, Kern::{kern}); }}"
+                        );
+                        kernels.insert(format!("{c:?}"), id);
+                    }
+                }
+            }
+        }
+    }
     for (bi, b) in blocks.iter().enumerate() {
         let code: Vec<String> = b
             .code
@@ -97,10 +122,16 @@ pub(super) fn emit_module(blocks: &[Lowered], tier: AotTier) -> String {
                 Item::Step(e) => {
                     match &e.xfer {
                         Some(x) => {
+                            let fast = match x.compute {
+                                Some(c) if pe_supports(c) => {
+                                    format!("Some(k{})", kernels[&format!("{c:?}")])
+                                }
+                                _ => "None".to_string(),
+                            };
                             let _ = writeln!(
                                 body,
-                                "    core.pc = 0x{:x}; core.aot_xfer(&{}, 0x{:x})?; core.aot_tail(0x{:x}, Kind::{:?}, 0x{:x});",
-                                e.pc, x.to_rust(), e.pc, e.pc, e.kind, e.next
+                                "    core.pc = 0x{:x}; core.aot_xfer(&{}, 0x{:x}, {})?; core.aot_tail(0x{:x}, Kind::{:?}, 0x{:x});",
+                                e.pc, x.to_rust(), e.pc, fast, e.pc, e.kind, e.next
                             );
                         }
                         None => {

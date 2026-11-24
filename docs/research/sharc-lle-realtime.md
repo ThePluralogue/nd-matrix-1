@@ -6,7 +6,7 @@ Question: can Whole-Pass AOT (`sharc-aot` generates Rust, `rustc -O` compiles it
 
 ## Result in one paragraph
 
-**NO-GO on this prototype.** The whole-pass AOT is bit-exact (ORG Core2: 57 blocks, boot 100 000 steps + 300 passes = 1 854 395 steps matched 1:1, full state and SRAM compared every 20 000 steps) and faster than the interpreter, but only by x1.3 to x1.4 per pass. The slowest measured core (ORG Core2, 6 280 steps per pass) needs **~370 us per pass with AOT, 8.0x the budget** (repeat runs 8.0 to 9.8x; the interpreter needs 12 to 13x). PNO Core2 (4 266 steps) needs 7.2 to 7.9x on the interpreter. Real time needs 6 280 steps / 46.08 us = **136 Msteps/s per core**; the AOT delivers 10 to 17 Msteps/s. The fast-f32 mode is no faster than exact mode (explained below). Closing the gap needs roughly a further 8x on the hottest core, which the structure of the current lowering cannot reach without the changes under "What would close it".
+**NO-GO on this prototype.** The whole-pass AOT is bit-exact (ORG Core2: 57 blocks, boot 100 000 steps + 300 passes = 1 854 395 steps matched 1:1, full state and SRAM compared every 20 000 steps) and faster than the interpreter, but only by x1.3 to x1.4 per pass. The slowest measured core (ORG Core2, 6 280 steps per pass) needs **~370 us per pass with AOT, 8.0x the budget** (repeat runs 8.0 to 9.8x; the interpreter needs 12 to 13x). PNO Core2 (4 266 steps) needs 7.2 to 7.9x on the interpreter. Real time needs 6 280 steps / 46.08 us = **136 Msteps/s per core**; the AOT delivers 10 to 17 Msteps/s. The fast-f32 mode is no faster than exact mode (explained below). Closing the gap needs roughly a further 8x on the hottest core, which the structure of the current lowering cannot reach without the changes under "What would close it". A follow-up gap analysis and two more lowering rounds (section "Gap analysis and lowering rounds") moved the best ORG Core2 case only from x8.0 to x7.0; the curve flattens far above x2.
 
 ## 1. Whole-Pass AOT prototype
 
@@ -74,6 +74,65 @@ Real time needs about 8x more than the AOT has, at ~100 ns per AOT step today:
 
 A combined x8 from items 1 to 4 is a stretch and costs ~10 min of `rustc` per build. Options for `ns4-lle4` and later: (a) treat SHARC LLE as non-real-time (render-ahead/offline) and keep the HLE engines for live play; (b) run items 1 to 3 as a bounded experiment on ORG Core2 with a checkpoint of <= 180 us/pass (x4) before committing Gate 2 to real-time SHARC; (c) more threads do not help: each core already has its own thread and the slowest core sets the tick.
 
+## Gap analysis and lowering rounds (follow-up, same PR)
+
+Method: `lle_sharc_bench --profile` (`core/aot_prof.rs`, `rdtsc` around every fallback step, every block call and every compute field; off by default). ORG Core2, one core, 316 passes (16 warm-up), the shipped module. Profile overhead inflates the pass (about 1.4 to 1.9 M cycles per pass against ~1.0 M unprofiled), so read the shares, not the absolute cycles.
+
+**Why "3.4% native" was misleading.** The 3.4% counted only the `pe` compute batches. The memory, move and shift transfers lowered by `aot_mem.rs` were not counted as native: they are 76.6% of the steps (4 810 of 6 280 per pass). The problem is not coverage, it is the cost of a lowered step.
+
+Where the pass time goes (ORG Core2, exact tier, round 2 build; shares of pass time):
+
+| # | Cause | Steps/pass | Share of time | Note |
+|---|---|---:|---:|---|
+| 1 | Lowered transfers, memory/move/DAG glue (`aot_xfer` + `aot_tail`), compute excluded | 4 810 | ~37% | about 100 to 150 cycles per step: generic `MemXfer` match, `Core` field traffic, sram bounds checks |
+| 2 | Compute fields inside lowered transfers (2 752 per pass): 1 981 on a generated `Pe` kernel, 771 on `exec_compute_op` | 2 752 ops | 29% | **140 to 210 cycles per op for both paths** (includes ~40 cycles of profile overhead): the exact 40-bit float arithmetic itself, not the dispatch, dominates; `Pe` load/store of ~170 bytes per op adds on top |
+| 3 | Instructions after a bail-out, run by the interpreter until the next block start (`Move:Other(4a)` 5.3%, `DagMem` 3.1%, `DirectMem` 2.0%, `ComputeBoth` 1.8%, `LoadImm` 1.6%, `Move:Other(15b)` 1.4%, ...) | 876 | 18.3% | all of the "unblocked" steps are mid-block: 29 bails per pass |
+| 4 | `lean_pass_aot` loop glue and idle check | | 9.6% | partly profile overhead |
+| 5 | Generic `aot_step` inside blocks (`Move:Other(4b)` 1.5%, `DirectMem` 1.4%, `ComputeCond` 0.5%, `Flow:JumpIndirect` 0.7%) | 284 | 4.5% | forms `MemXfer` does not lower (conditional, long-word) and flows |
+| 6 | Block entry/exit dispatch (search, guard, code memcmp) | 83 calls | 1.2% | |
+| 7 | Entry refused by the guard | 24 | 0.3% | all "hardware loop ends inside block" |
+
+No cost came from computed jumps (33 `JumpIndirect` steps per pass, 0.7%) or from SRAM code invalidation (no "SRAM code changed" refusal in 300 passes).
+
+**The curve (ORG Core2, one core, mean us per pass, best of the repeats, noisy host: repeats vary +-15% and busy-host runs were up to 1.7x slower).** The shipped state was re-verified at the end: `AOT DIFF OK: 57 blocks, ... 1854395 steps matched 1:1`, `--bench` x1.364 (interpreter 0.871 ms, AOT 0.639 ms per pass). Every row except the interpreter was checked 1:1 against the interpreter with `sharc_jit_diff --aot-top 999 --chunk 20000` (boot 100 000 + 300 passes, 1 854 395 steps).
+
+| Build | Lowered share of steps | Best us/pass | x budget (46.08 us) | `--bench` speedup vs interpreter |
+|---|---:|---:|---:|---:|
+| Interpreter | 0% | 531 to 585 | 11.5 to 12.7 | 1.00 |
+| v1: transfers lowered, compute through `exec_compute_op` | 76.6% | 370 | 8.0 | x1.34 |
+| v2: compute fields of transfers on generated `Pe` kernels (one out-of-line kernel per distinct op, 110 kernels; inlining one `Pe` per site made `rustc` use 19 GB and was killed) | 76.6% | 322 | 7.0 | x1.38 |
+| v3: blocks cut after every guard-changing instruction (795 blocks, no bail-out tail) | 81.8% | 377 | 8.2 | x1.14 |
+
+v3 raised the covered share to 97% of the steps but dispatch grew from 1.2% to 9.2% of the time (each entry searches, checks the guard and memcmps the code), so it was **not faster and was reverted** (not in the PR; the test for it went with it). Two rounds after v1 moved the best case from x8.0 to x7.0. **The curve flattens far above x2**: stopping this line as the orchestrator asked. What the profile says would still be needed is a different design, not a third round: per-site constant-folded code with the register file in locals for a whole block (rows 1 and 3), and compute that is cheaper than ~100 cycles per 40-bit op (row 2), where only the fast-f32 tier can help.
+
+**Fast mode.** Exact and fast-f32 now share one lowered code path: the generated module differs only in the kernel functions' `Kern::Exact` / `Kern::Approx` argument (`aot_pe_both`), chosen at generation time (`--tier pe|approx`). Measured with the shipped v2 build, final re-run on a busy host (interpreter 643 us): ORG Core2 exact 502 / 527 / 488 us against fast-f32 378 / 365 / 378 us (about 25% faster, x7.9 to x8.2 of the budget); an earlier session gave exact 444 / 449 / 502 against fast 350 / 409 / 433 us (10 to 20%). Fast-f32 gains because compute is 29% of the time and the host-`f32` kernel is cheaper than the exact 40-bit one; it stays far from real time. **Not done:** the Fast-vs-Exact error in dB on a real pass for this build. The earlier approximate tier measured 112 to 141 dB SNR (window values) on the 8-voice pass, worst measured pass 103.8 dB (`sharc-aot-native-float.md`); `sharc_jit_diff --aot-audio --buf ...` with the approximate module compiled first would reproduce it, but the multi-module build embeds the exact module first. Fast-f32 stays opt-in until that number exists.
+
+### Missing cores: what each needs
+
+| Core | Result here | Smallest fix |
+|---|---|---|
+| ORG Core1 | boots under the `org` preset but no pass returns to the poll loop (hits the 2 000 000-step cap, idle false) | it is a Core1 section: start it by the P4I interrupt like PNO Core1 (`irq`), with its own idle pc; both need to be read from its listing (not derived here) |
+| FX Core1, FX Core2 | the `org`/`pno` presets fault at boot | `FX1`/`FX2` in `runner/fx_run.rs` already hold entry `0x1211E3`, idle pcs `0x12128B` / `0x12125B`, triggers, devs and the Core1 start by `irq (15, 0x41)`: add `fx1`/`fx2` presets built from them, and call `FxPeer::before_pass` (the Core1 hand-over counter Core2 waits for) as a per-tick hook in `pass_sched` |
+| SY1SY2, SMP | not poll-loop passes | a `PassJob` kind that runs the `live_sy` / `live_smp` interrupt pass (`SyModel`) instead of `lean_pass`; presets exist (`sy_preset`, `smp_preset`) |
+
+### Total CPU across the eight cores
+
+Measured (3 cores together, exact mode, v1 AOT build): PNO Core1 74 us, PNO Core2 333 us, ORG Core2 368 us. The other five are not measured. ASSUMED for the projection: ORG Core1 equals ORG Core2 (same organ program, `dsp-image-hunt.md` 5.17), FX Core1/2, SY1SY2 and SMP each equal PNO Core1 (74 us; probably optimistic for FX, which `fx-contexts.md` shows busier). Sum: 74 + 333 + 350 + 350 + 4 x 74 = about 1 400 us per 46.08 us period = **about 30 budget periods of host CPU**. Fraction of real time each host can reach (the slowest core, about 350 us, is a floor on one core's pass time whatever the core count; the packing figure is sum / host cores):
+
+| Host cores for the emulator | Wall us per period | Fraction of real time |
+|---:|---:|---:|
+| 4 | ~350 (sum / 4 = 350) | ~13% |
+| 6 | ~350 (sum / 6 = 234, floored by the slowest core) | ~13% |
+| 8 | ~350 (floored by the slowest core) | ~13% |
+
+With every host from 4 cores up the slowest core, not the core count, decides: real time needs it ~7.6x faster even with unlimited cores. Only PNO Core1 (x1.6 measured) is within reach of one core of real time.
+
+## Alternatives (what to do instead)
+
+- **HLE hybrid** (recommended by the numbers): run LLE only for cores that fit the budget and keep the Rust HLE engines for the rest. On these measurements only PNO Core1 (x1.6 over, closest) could ever fit; ORG/PNO Core2 are x7 to x8 over.
+- **Slower-than-real-time LLE** for non-live uses: preset rendering and null tests of the HLE engines against the firmware.
+- **Bounded redesign experiment** (per-site folded code, registers in locals per block, native flows) only if someone wants to find out whether x2 is reachable; this prototype's curve does not show it.
+
 ## Implications
 
 - Gate 2 beans (`ns4-lle4` and later) must not assume real-time SHARC execution. Measured gap on the slowest benchmarked core: x8.0 with AOT, x10 to 13 interpreted. All benchmarked cores together need 17 to 20 host cores of budget.
@@ -83,7 +142,8 @@ A combined x8 from items 1 to 4 is a stretch and costs ~10 min of `rustc` per bu
 ## Follow-ups
 
 - Presets and message scripts for ORG Core1 and FX Core1/Core2; SY1SY2/SMP as ISR-driven jobs in `pass_sched`, so the 300-pass benchmark covers all five chips.
-- Bounded experiment on items 1 to 3 with an x4 checkpoint.
+- Bounded experiment on items 1 to 3 with an x4 checkpoint (only if the redesign in the gap analysis is wanted).
+- Fast-vs-Exact error in dB on a real pass for the current module build (`sharc_jit_diff --aot-audio` with the approximate module compiled first).
 - Listening/null test for the fast-f32 tier, only if the compute share of the pass becomes native.
 
 ## Reproduce

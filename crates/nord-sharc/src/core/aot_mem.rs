@@ -13,6 +13,8 @@
 //! the cached-code extent. Provenance: VERIFIED against the interpreter by
 //! `xfer_equals_the_interpreter_on_random_states` (every form, SIMD and scalar) and by the
 //! whole-pass differential on the real ORG core 2 pass (`docs/research/sharc-lle-realtime.md`).
+use super::aot_native::Kern;
+use super::aot_pe::Pe;
 use super::decode_cache::{ComputeOp, DecodedOp, MoveOp};
 use super::shifter::shift_imm_params;
 use super::{sign_extend, Core, Fault};
@@ -312,9 +314,31 @@ impl Core {
         }
     }
 
-    /// Runs the compute field on each element (conditions already known true).
+    /// Runs the compute field on each element (conditions already known true). `fast` is the
+    /// generated out-of-line kernel of this very op (a [`Pe`] run for both elements, one function
+    /// per distinct op so the compile stays small); without it the interpreter runs the op.
     #[inline(always)]
-    fn aot_compute_both(&mut self, cop: ComputeOp, pc: u32) -> Result<(), Fault> {
+    fn aot_compute_both(
+        &mut self,
+        cop: ComputeOp,
+        pc: u32,
+        fast: Option<fn(&mut Core)>,
+    ) -> Result<(), Fault> {
+        let t = super::aot_prof::aot_prof_on().then(super::aot_prof::tsc);
+        let r = if let Some(f) = fast {
+            f(self);
+            Ok(())
+        } else {
+            self.aot_compute_slow(cop, pc)
+        };
+        if let Some(t) = t {
+            super::aot_prof::prof_compute(fast.is_some(), super::aot_prof::tsc() - t);
+        }
+        r
+    }
+
+    #[inline(never)]
+    fn aot_compute_slow(&mut self, cop: ComputeOp, pc: u32) -> Result<(), Fault> {
         let ok_x = self.exec_compute_op(cop);
         let mut ok_y = true;
         if self.simd() {
@@ -332,14 +356,33 @@ impl Core {
         }
     }
 
+    /// Both elements of `cop` on [`Pe`] state with the tier `kern` (what a generated `kN` does).
+    #[inline(always)]
+    pub(super) fn aot_pe_both(&mut self, cop: ComputeOp, kern: Kern) {
+        let simd = self.simd();
+        let mut pe = Pe::load(self, false).with_kern(kern);
+        pe.exec(cop);
+        pe.store(self);
+        if simd {
+            let mut pe = Pe::load(self, true).with_kern(kern);
+            pe.exec(cop);
+            pe.store(self);
+        }
+    }
+
     /// Executes the lowered transfer `m` of the instruction at `pc` (the pc is only for faults).
     #[inline(always)]
-    pub(super) fn aot_xfer(&mut self, m: &MemXfer, pc: u32) -> Result<(), Fault> {
+    pub(super) fn aot_xfer(
+        &mut self,
+        m: &MemXfer,
+        pc: u32,
+        fast: Option<fn(&mut Core)>,
+    ) -> Result<(), Fault> {
         let bad = |address| Fault::BadAddress { pc, address };
         let ii = usize::from(m.ii);
         if let Data::Modify { dst, src } = m.data {
             if let Some(cop) = m.compute {
-                self.aot_compute_both(cop, pc)?;
+                self.aot_compute_both(cop, pc, fast)?;
             }
             let Addr::PostM(mi) = m.addr else {
                 return Err(Fault::Unimplemented {
@@ -363,7 +406,7 @@ impl Core {
             }
             Data::Swap { r, s } => {
                 if let Some(cop) = m.compute {
-                    self.aot_compute_both(cop, pc)?;
+                    self.aot_compute_both(cop, pc, fast)?;
                 }
                 let (r, s) = (usize::from(r), usize::from(s));
                 self.swap_regs(r, s);
@@ -372,7 +415,7 @@ impl Core {
             Data::Mov { src, dst } => {
                 let cap = self.capture_move(src);
                 if let Some(cop) = m.compute {
-                    self.aot_compute_both(cop, pc)?;
+                    self.aot_compute_both(cop, pc, fast)?;
                 }
                 self.apply_move_if(dst, src, &cap, true, true);
                 return Ok(());
@@ -396,7 +439,7 @@ impl Core {
             }
             Data::Compute => {
                 if let Some(cop) = m.compute {
-                    return self.aot_compute_both(cop, pc);
+                    return self.aot_compute_both(cop, pc, fast);
                 }
                 return Ok(());
             }
@@ -426,7 +469,7 @@ impl Core {
             Data::Reg { ureg, write } => {
                 let captured = if write { self.capture(ureg) } else { (0, 0) };
                 if let Some(cop) = m.compute {
-                    self.aot_compute_both(cop, pc)?;
+                    self.aot_compute_both(cop, pc, fast)?;
                 }
                 let simd = self.simd();
                 if write {
@@ -459,8 +502,18 @@ impl Core {
 
 #[cfg(test)]
 mod tests {
+    use super::super::aot_pe::pe_supports;
     use super::super::support::core_at_zero;
     use super::*;
+
+    thread_local! {
+        static OP: std::cell::Cell<Option<ComputeOp>> = const { std::cell::Cell::new(None) };
+    }
+
+    /// Stand-in for a generated `kN` function.
+    fn kernel(core: &mut Core) {
+        core.aot_pe_both(OP.with(|o| o.get()).unwrap(), Kern::Exact);
+    }
 
     /// Runs `parcels` on the interpreter and through `aot_xfer` on identical random states and
     /// compares everything, in scalar and SIMD mode.
@@ -503,7 +556,12 @@ mod tests {
                     .or_else(|| MemXfer::from_decoded(&DecodedOp::from_insn(0, &d.insn, d.w), d.w))
                     .unwrap_or_else(|| panic!("{what}: not lowered"));
                 assert_eq!(a.step(), Ok(()), "{what}");
-                b.aot_xfer(&m, 0).unwrap();
+                // the generated kernel of the op, when the native `Pe` models it
+                let fast = m.compute.filter(|&c| pe_supports(c)).map(|c| {
+                    OP.with(|o| o.set(Some(c)));
+                    kernel as fn(&mut Core)
+                });
+                b.aot_xfer(&m, 0, fast).unwrap();
                 b.pc = a.pc;
                 b.steps = a.steps;
                 assert_eq!(a.state_mismatch(&b), None, "{what} simd {simd} seed {seed}");

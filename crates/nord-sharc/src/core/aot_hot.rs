@@ -62,7 +62,7 @@ impl AotHotStats {
 
 /// The enabled blocks (sorted by start) and their counters.
 pub(super) struct AotHot {
-    blocks: Vec<AotBlock>,
+    pub(super) blocks: Vec<AotBlock>,
     per_block: Vec<AotHotStats>,
     total: AotHotStats,
     fault: Option<Fault>,
@@ -70,7 +70,7 @@ pub(super) struct AotHot {
 
 impl Core {
     /// Whether the live SRAM still holds the code the block was generated from.
-    fn aot_code_matches(&self, b: &AotBlock) -> bool {
+    pub(super) fn aot_code_matches(&self, b: &AotBlock) -> bool {
         let o = b.start as usize * 2;
         self.sram.get(o..o + b.code.len()) == Some(b.code)
     }
@@ -250,6 +250,9 @@ impl Core {
         };
         let b = h.blocks[i];
         if self.steps + u64::from(b.steps) > limit || !self.aot_ready(&b) {
+            if super::aot_prof::aot_prof_on() {
+                super::aot_prof::prof_refusal(self.aot_refusal_reason(&b, limit));
+            }
             if let Some(h) = self.aot_hot.as_deref_mut() {
                 h.per_block[i].misses += 1;
                 h.total.misses += 1;
@@ -257,7 +260,11 @@ impl Core {
             return false;
         }
         let s0 = self.steps;
+        let t = super::aot_prof::aot_prof_on().then(super::aot_prof::tsc);
         let res = (b.run)(self);
+        if let Some(t) = t {
+            super::aot_prof::prof_run(super::aot_prof::tsc() - t);
+        }
         let done = self.steps - s0;
         let bailed = res.is_ok() && done < u64::from(b.steps);
         if let Some(h) = self.aot_hot.as_deref_mut() {

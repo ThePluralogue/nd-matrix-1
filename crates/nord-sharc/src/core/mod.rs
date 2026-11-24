@@ -27,6 +27,7 @@ mod aot_lower;
 pub(crate) mod aot_mem;
 mod aot_native;
 mod aot_pe;
+pub mod aot_prof;
 mod aot_state;
 mod aot_whole;
 mod arith_loop;

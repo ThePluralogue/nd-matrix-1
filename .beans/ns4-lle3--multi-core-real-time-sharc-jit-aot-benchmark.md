@@ -31,4 +31,10 @@ Full ARM0 integration (`ns4-lle5`); SPORT audio routing (`ns4-lle4`).
 - `core/aot_emit.rs`, `aot_hot.rs`, `aot_glue.rs`, `build.rs`, `sharc-aot --whole-pass`: chunked module emission, multi-module embedding (`NORD_SHARC_AOT_HOT=TAG=file;...`), `Core::enable_aot_tag`.
 - `runner/pass_sched.rs` and `nord-tools` bin `lle_sharc_bench`: lock-free 1-thread-per-core spin-barrier scheduler and the 300-pass benchmark.
 - Result: ORG Core2 AOT 1:1 with the interpreter over 1 854 395 steps; x1.34 per pass; 8.0x over the 46.08 us budget. Verdict NO-GO for real time, see `docs/research/sharc-lle-realtime.md`.
-- Open: presets for ORG c1/FX, ISR job for SY1SY2/SMP, bounded x4 experiment (follow-ups in the note).
+- Follow-up in the same PR: `core/aot_prof.rs` profile (`lle_sharc_bench --profile`), compute fields of lowered transfers on generated `Pe` kernels (one per distinct op, exact/approx by generation-time tier), gap analysis table and curve in the research note. A block-splitting variant (v3) verified 1:1 but was slower and was reverted.
+
+## Left to do (status stays in-progress)
+
+- Presets/jobs for ORG Core1 (P4I start, own idle pc), FX Core1/Core2 (`FX1`/`FX2` consts exist; add presets + `FxPeer` tick hook), SY1SY2/SMP (ISR job kind in `pass_sched`): see "Missing cores" in `docs/research/sharc-lle-realtime.md`.
+- Fast-vs-Exact error in dB on a real pass for the current module build.
+- Follow-up lowering lines the profile shows (per-site folded code, registers in locals, cheaper compute) only if a redesign is wanted; two rounds moved ORG Core2 from x8.0 to x7.0 of budget, so the verdict stays no-go.
