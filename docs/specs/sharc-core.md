@@ -1,6 +1,6 @@
 # SHARC ADSP-214xx core model (Track B oracle)
 
-Specification for a test-oracle core that executes single routines of the real DSP images. It is **not** a full-system emulator and it does not replace the high-level engine ([D2](../DECISIONS.md)); the one opt-in exception is the minimal system run of section 7 ([D119](../DECISIONS.md#d119-the-sharc-oracle-becomes-the-dsp-half-of-a-minimal-system-run-opt-in-org-core2-only-no-default-change), proposed). Scope and counts come from `tools/sharc_census.py` (`docs/research/dsp-image-hunt.md` 5.19).
+Specification for a test-oracle core that executes single routines of the real DSP images. It is **not** a full-system emulator and it does not replace the high-level engine ([D2](../DECISIONS.md)); the one opt-in exception is the minimal system run of section 7 ([D119](../DECISIONS.md#d119-the-sharc-oracle-becomes-the-dsp-half-of-a-minimal-system-run-opt-in-org-core2-only-no-default-change), proposed). A proposed follow-on phase to promote this core into a unified real-time ARM + SHARC low-level emulator (LLE), gated on real-time speed benchmarks, is tracked in Phase 8 (`ns4-lle1`, [ROADMAP](../ROADMAP.md)). Scope and counts come from `tools/sharc_census.py` (`docs/research/dsp-image-hunt.md` 5.19).
 
 ## 1. Goal
 
