@@ -11,9 +11,9 @@ updated_at: 2026-11-23T21:40:00Z
 ## Context
 Track B (`ns4-trkb`, `crates/nord-sharc`) already boots all five DSP images (`ORG`, `PNO`, `FX`, `SY1SY2`, `SMP`), matches the interpreter 316/316 passes in Cranelift JIT on PNO core 1 (`docs/research/pno-jit-arm-profile.md`), and runs 152/155 piano programs through `SMP` CNSP page refill (`ns4-pnoc`), while the ARM0 firmware boots in Unicorn (`tools/arm_*.py`).
 
-Today Track B is an offline test oracle (`docs/specs/sharc-core.md`, D2, D119). Promoting it to a **full real-time ARM + SHARC low-level emulator (LLE)** offers two major benefits:
-1. **Bit-exact audio, FX, arpeggiator, and OLED fidelity** across all programs and future OS updates without hand-porting every DSP routine.
-2. **Cleanest copyright posture:** pure hardware emulation (Analog Devices SHARC + ARM) contains zero vendor DSP logic or lookup tables; users supply their own lawfully obtained, unencrypted OS update file.
+This epic **supersedes the earlier unmerged D118 proposal (PR #466 / epic `ns4-zp6a`)** and folds its key compiler/scheduler findings into a unified end-to-end plan:
+- PR #466 + `docs/research/sharc-aot-multi-block.md` showed that basic-block JIT/AOT leaves too many steps in `Core::step()` fallback (~11–16 Msteps/s vs ~93–129 Msteps/s needed for `46.08 us/pass`), so **Whole-Pass AOT (`sharc-aot` → `rustc -O`)** with native `DirectMem`/`DagMem`/SIMD/`RegMove`/`RegSwap` lowering and a **lock-free spin-barrier multi-core pass scheduler** (building on PR #460 `ns4-z2fq` and PR #461 `ns4-spj2`) are required for Gate 1b (`ns4-lle3`).
+- Promoting Track B to an **opt-in real-time ARM + SHARC low-level emulator (LLE)** delivers 100% bit-exact audio/OLED fidelity across future OS updates while containing zero vendor DSP routines or lookup tables.
 
 This epic gates the full wiring behind a **Gate 1 feasibility & speed benchmark** (`ns4-lle2`, `ns4-lle3`) to prove real-time 48 kHz viability before committing to full GUI/plugin integration.
 
