@@ -2813,6 +2813,7 @@ name = "nord-tools"
 version = "0.1.4"
 dependencies = [
  "nord-core",
+ "nord-sharc",
  "serde_json",
 ]
 
