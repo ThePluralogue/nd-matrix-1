@@ -44,6 +44,12 @@ def make_tree(tmp_path, platform):
         clap.write_bytes(b"clap")
     else:
         (bundled / "nd-matrix-1.clap").write_bytes(b"clap")
+    runtime = root / rp.APPIMAGE_RUNTIME_DIR
+    runtime.mkdir(parents=True)
+    for name in rp.APPIMAGE_RUNTIME_FILES:
+        text = "GNU LESSER GENERAL PUBLIC LICENSE\n" if "LGPL" in name else f"notice {name}\n"
+        (runtime / name).write_text(text, encoding="utf-8")
+    (runtime / "stray.txt").write_text("must never ship")
     (root / ".reference").mkdir()
     (root / ".reference" / "fw.bin").write_bytes(b"firmware")
     return root
@@ -259,3 +265,45 @@ def test_workspace_contact_metadata_has_no_foreign_email_and_current_repo_url():
     ]
     assert pkg["authors"] == ["ymatrix1"]
     assert pkg["repository"] == "https://github.com/ymatrix1/nd-matrix-1"
+
+
+def test_collect_ships_appimage_runtime_notices_on_linux_only(tmp_path):
+    lin = {rel for _, rel in rp.collect(LIN, make_tree(tmp_path / "l", LIN))}
+    want = {f"{rp.APPIMAGE_RUNTIME_DIR}/{n}" for n in rp.APPIMAGE_RUNTIME_FILES}
+    assert want <= lin
+    assert f"{rp.APPIMAGE_RUNTIME_DIR}/stray.txt" not in lin
+    for plat in (WIN, MAC):
+        other = {rel for _, rel in rp.collect(plat, make_tree(tmp_path / plat.name, plat))}
+        assert not any(rel.startswith("licenses/") for rel in other)
+
+
+def test_collect_missing_appimage_runtime_notice_raises(tmp_path):
+    root = make_tree(tmp_path, LIN)
+    (root / rp.APPIMAGE_RUNTIME_DIR / "libfuse-LGPL-2.1.txt").unlink()
+    with pytest.raises(FileNotFoundError, match="libfuse-LGPL-2.1.txt"):
+        rp.collect(LIN, root)
+
+
+def test_runtime_notice_files_cover_every_linked_component():
+    # The runtime links musl, libfuse, squashfuse, zstd, zlib and mimalloc (README.md there).
+    names = " ".join(rp.APPIMAGE_RUNTIME_FILES)
+    for part in ("type2-runtime", "musl", "libfuse", "squashfuse", "zstd", "zlib", "mimalloc"):
+        assert part in names
+
+
+def test_committed_runtime_notices_are_real_texts():
+    base = rp.ROOT / rp.APPIMAGE_RUNTIME_DIR
+    for name in rp.APPIMAGE_RUNTIME_FILES:
+        text = (base / name).read_text(encoding="utf-8")
+        assert len(text) > 500, name
+        assert "\u2014" not in text, name
+    assert "GNU LESSER GENERAL PUBLIC LICENSE" in (base / "libfuse-LGPL-2.1.txt").read_text()
+    readme = (base / "README.md").read_text(encoding="utf-8")
+    assert rp.APPIMAGE_RUNTIME_SHA256 in readme
+    assert rp.APPIMAGE_RUNTIME_URL.rsplit("/", 1)[0].split("download/")[1] in readme
+
+
+def test_release_workflow_downloads_the_pinned_runtime():
+    workflow = (rp.ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert rp.APPIMAGE_RUNTIME_URL in workflow
+    assert "--appimage-runtime" in workflow

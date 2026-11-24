@@ -195,12 +195,26 @@ jobs:
           if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
           python tools/release_package.py "${args[@]}"
 
+      # LGPL-2.1 (libfuse is static in the AppImage runtime): ship the corresponding source as a
+      # release asset. Every download is checked against the sha256 pins in the script (D242).
+      - name: Build AppImage runtime sources asset (Linux)
+        if: runner.os == 'Linux'
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--out dist)
+          if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
+          python tools/release_runtime_sources.py "${args[@]}"
+
       - name: Verify archive (layout, forbidden content, plugin exports, checksum)
         shell: bash
         run: |
           set -euo pipefail
           for archive in dist/*.zip dist/*.tar.gz; do
             [ -e "$archive" ] || continue
+            case "$archive" in *-appimage-runtime-sources.tar.gz) continue ;; esac
             python tools/release_verify.py "$archive" --target "${{ matrix.target }}"
           done
 
@@ -213,6 +227,11 @@ jobs:
             https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
           echo "46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1  /tmp/appimagetool" | sha256sum -c -
           chmod +x /tmp/appimagetool
+          # Pinned runtime (D242): without --runtime-file appimagetool downloads the moving
+          # `continuous` runtime. tools/release_installers.py checks the sha256 pinned in
+          # tools/release_package.py before building.
+          curl -fsSL -o /tmp/appimage-runtime \
+            https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
 
       - name: Build native OS installers and SHA256 files
         shell: bash
@@ -222,7 +241,7 @@ jobs:
           set -euo pipefail
           args=(--target "${{ matrix.target }}" --out dist)
           if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
-          if [ "${{ runner.os }}" = "Linux" ]; then args+=(--appimagetool /tmp/appimagetool); fi
+          if [ "${{ runner.os }}" = "Linux" ]; then args+=(--appimagetool /tmp/appimagetool --appimage-runtime /tmp/appimage-runtime); fi
           python tools/release_installers.py "${args[@]}"
 
       - name: Upload release artifact

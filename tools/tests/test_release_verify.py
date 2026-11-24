@@ -2,6 +2,7 @@ import struct
 
 import pytest
 import release_package as rp
+import release_runtime_sources as rrs
 import release_verify as rv
 from test_release_package import LIN, MAC, NOTICES_OK, WIN, make_tree
 
@@ -33,6 +34,23 @@ def fake_pe(names):
     return bytes(image)
 
 
+def write_sources_asset(archive, skip=()):
+    """Write the `-appimage-runtime-sources.tar.gz` next to a Linux archive."""
+    import io
+    import tarfile
+
+    asset = archive.with_name(rrs.sources_name_for_archive(archive.name))
+    with tarfile.open(asset, "w:gz") as tf:
+        for name in rrs.SOURCES_FILES:
+            if name in skip:
+                continue
+            info = tarfile.TarInfo(f"{asset.name[:-7]}/{name}")
+            info.size = 4
+            tf.addfile(info, io.BytesIO(b"data"))
+    rp.write_sha256(asset)
+    return asset
+
+
 def build(tmp_path, platform, *, clap=None, vst3=None, readme=README_OK, extra=None):
     root = make_tree(tmp_path, platform)
     (root / "docs" / "RELEASE_README.txt").write_text(readme)
@@ -51,7 +69,10 @@ def build(tmp_path, platform, *, clap=None, vst3=None, readme=README_OK, extra=N
         for rel, data in extra.items():
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             (root / rel).write_bytes(data)
-    return rp.package(platform.triple, "v1.2.3", tmp_path / "out", root)
+    archive = rp.package(platform.triple, "v1.2.3", tmp_path / "out", root)
+    if platform.os == "linux":
+        write_sources_asset(archive)
+    return archive
 
 
 def _drop(archive, member):
@@ -225,3 +246,59 @@ def test_main_unreadable_archive(tmp_path, capsys):
     bad = tmp_path / "nd-matrix-1-v1-linux-x86_64.tar.gz"
     bad.write_bytes(b"not gzip")
     assert rv.main([str(bad)]) == 1
+
+
+def test_linux_archive_without_runtime_notices_fails_release(tmp_path):
+    archive = build(tmp_path, LIN)
+    assert rv.verify(archive, LIN.triple) == []
+    _drop(archive, "/licenses/appimage-runtime/libfuse-LGPL-2.1.txt")
+    problems = rv.verify(archive, LIN.triple)
+    assert "missing licenses/appimage-runtime/libfuse-LGPL-2.1.txt" in problems
+
+
+def test_runtime_notices_empty_or_wrong_libfuse_text_fail_release():
+    base = rv.APPIMAGE_RUNTIME_DIR
+    rel = {f"{base}/{n}": b"text" for n in rv.APPIMAGE_RUNTIME_FILES}
+    assert any("not the GNU LGPL" in p for p in rv.check_runtime_notices(rel))
+    rel[f"{base}/libfuse-LGPL-2.1.txt"] = b"GNU LESSER GENERAL PUBLIC LICENSE"
+    assert rv.check_runtime_notices(rel) == []
+    rel[f"{base}/musl-LICENSE.txt"] = b"  \n"
+    assert rv.check_runtime_notices(rel) == [f"{base}/musl-LICENSE.txt is empty"]
+
+
+@pytest.mark.parametrize("platform", [WIN, MAC])
+def test_runtime_notices_not_required_outside_linux(tmp_path, platform):
+    assert not any(f.startswith("licenses/") for f in rv.expected_files(platform))
+
+
+def test_linux_release_without_sources_asset_fails(tmp_path):
+    archive = build(tmp_path, LIN)
+    asset = archive.with_name(rrs.sources_name_for_archive(archive.name))
+    asset.unlink()
+    problems = rv.verify(archive, LIN.triple)
+    assert any("appimage-runtime-sources.tar.gz (LGPL-2.1" in p for p in problems)
+
+
+def test_sources_asset_must_be_complete_and_checksummed(tmp_path):
+    archive = build(tmp_path, LIN)
+    write_sources_asset(archive, skip=("fuse-3.15.0.tar.xz",))
+    problems = rv.verify(archive, LIN.triple)
+    assert any("lacks fuse-3.15.0.tar.xz" in p for p in problems)
+    asset = archive.with_name(rrs.sources_name_for_archive(archive.name))
+    asset.with_name(asset.name + ".sha256").unlink()
+    assert any(
+        p.startswith("missing") and p.endswith(".sha256") for p in rv.verify(archive, LIN.triple)
+    )
+
+
+def test_sources_asset_not_required_for_windows_and_macos(tmp_path):
+    for platform in (WIN, MAC):
+        assert rv.verify(build(tmp_path / platform.name, platform), platform.triple) == []
+
+
+def test_sources_name_for_archive():
+    assert (
+        rrs.sources_name_for_archive("nd-matrix-1-v1.2.3-linux-x86_64.tar.gz")
+        == "nd-matrix-1-v1.2.3-appimage-runtime-sources.tar.gz"
+    )
+    assert rrs.sources_name_for_archive("nd-matrix-1-v1.2.3-windows-x86_64.zip") is None

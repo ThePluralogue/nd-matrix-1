@@ -462,7 +462,7 @@ The ticks below mean the model exists and is tested. Which parts match the firmw
 - [ ] Trademark policy for the ND Matrix 1 name (`ns4-0s8y`; drafted, registration is an owner decision)
 - [ ] DCO or CLA decision (`ns4-9ngp`, owner)
 - [ ] Counsel review of LEGAL.md open questions (`ns4-ns2j`, owner)
-- [ ] AppImage runtime license notices (`ns4-sgro`)
+- [x] AppImage runtime license notices and LGPL corresponding source (`ns4-sgro`, D242)
 - [ ] Firmware-derived tables moved to runtime loading (`ns4-u8o2`), then a second history rewrite (`ns4-eh57`)
 - [ ] Trade dress review of the panel look (`ns4-80xe`)
 

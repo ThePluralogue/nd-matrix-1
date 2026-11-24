@@ -13,6 +13,7 @@ Archive layout (one top-level folder, so extraction never litters the cwd):
         nd-matrix-1.clap  nd-matrix-1.vst3/
         README.txt  HOST_COMPATIBILITY.md  THIRD_PARTY_LICENSES.html
         ADDITIONAL-PERMISSIONS.md  TRADEMARKS.md  [LICENSE*]
+        licenses/appimage-runtime/   (Linux only: notices of the runtime inside the .AppImage)
 
 Verify a built archive with `tools/release_verify.py`.
 """
@@ -49,6 +50,29 @@ LEGAL_NOTICES = ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md")
 # Documentation files every installer layout places beside the license (README.txt is staged
 # from README_SRC, the others from EXTRA_DOCS, THIRD_PARTY_NOTICES and LEGAL_NOTICES).
 DOC_FILES = ("README.txt", "HOST_COMPATIBILITY.md", THIRD_PARTY_NOTICES, *LEGAL_NOTICES)
+# License texts of the AppImage runtime that `appimagetool` embeds in every `.AppImage` (musl,
+# LGPL-2.1 libfuse, squashfuse, zstd, zlib, mimalloc; D242). Committed under `licenses/`, shipped in
+# the Linux archive at the same relative path and in the AppImage under `usr/share/doc/<pkg>/`.
+APPIMAGE_RUNTIME_DIR = "licenses/appimage-runtime"
+# The runtime is pinned: `appimagetool` 1.9.0 otherwise downloads the moving `continuous` release
+# of AppImage/type2-runtime at build time, so the notices could not match the shipped runtime.
+# VERIFIED: sha256 of `runtime-x86_64` from release 20251108 (commit dd6cebe), computed with
+# `sha256sum` on the downloaded asset (944632 bytes) and checked by `tools/release_installers.py`
+# before every AppImage build (test_build_appimage_rejects_unpinned_runtime).
+APPIMAGE_RUNTIME_URL = (
+    "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
+)
+APPIMAGE_RUNTIME_SHA256 = "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+APPIMAGE_RUNTIME_FILES = (
+    "README.md",
+    "type2-runtime-LICENSE.txt",
+    "musl-LICENSE.txt",
+    "libfuse-LGPL-2.1.txt",
+    "squashfuse-LICENSE.txt",
+    "zstd-LICENSE.txt",
+    "zlib-LICENSE.txt",
+    "mimalloc-LICENSE.txt",
+)
 TAG_RE = re.compile(r"^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$")
 
 
@@ -159,6 +183,11 @@ def collect(
     items.append((_need_notices(root), THIRD_PARTY_NOTICES))
     for name in LEGAL_NOTICES:
         items.append((need(root / name), name))
+    if platform.os == "linux":
+        for name in APPIMAGE_RUNTIME_FILES:
+            items.append(
+                (need(root / APPIMAGE_RUNTIME_DIR / name), f"{APPIMAGE_RUNTIME_DIR}/{name}")
+            )
     for lic in sorted(root.glob("LICENSE*")):
         if lic.is_file():
             items.append((lic, lic.name))

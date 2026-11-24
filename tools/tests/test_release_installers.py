@@ -1,7 +1,9 @@
 import plistlib
+from pathlib import Path
 
 import pytest
 import release_installers as ri
+import release_package as rp
 from test_release_package import LIN, MAC, NOTICES_OK, WIN, make_tree
 
 
@@ -329,3 +331,75 @@ def test_dmg_stage_uses_new_bundle_names_only(tmp_path):
     names = {p.name for p in dmg_stage.iterdir()}
     assert {"nd-matrix-1.vst3", "nd-matrix-1.clap"} <= names
     assert not {n for n in names if n.startswith("nord-plugin.")}
+
+
+def test_appdir_ships_appimage_runtime_notices(tmp_path):
+    root = _make_tree_with_licenses(tmp_path, LIN)
+    appdir, _ = ri.stage_linux_appdir("v1.2.3", tmp_path / "dist", tmp_path / "work", root=root)
+    notices = appdir / "usr" / "share" / "doc" / "nd-matrix-1" / "appimage-runtime"
+    names = {p.name for p in notices.iterdir()}
+    assert names == set(rp.APPIMAGE_RUNTIME_FILES)
+    assert "LESSER" in (notices / "libfuse-LGPL-2.1.txt").read_text(encoding="utf-8")
+
+
+def test_deb_does_not_ship_appimage_runtime_notices(tmp_path):
+    root = _make_tree_with_licenses(tmp_path, LIN)
+    pkg_root, _ = ri.stage_linux_deb("v1.2.3", tmp_path / "dist", tmp_path / "work", root=root)
+    assert not list(pkg_root.rglob("appimage-runtime"))
+
+
+def test_build_appimage_rejects_unpinned_runtime(tmp_path):
+    root = _make_tree_with_licenses(tmp_path, LIN)
+    args = ("v1.2.3", tmp_path / "dist", tmp_path / "work", "appimagetool", root)
+    with pytest.raises(ValueError, match="--appimage-runtime is required"):
+        ri.build_linux_appimage(*args)
+    other = tmp_path / "runtime"
+    other.write_bytes(b"not the pinned runtime")
+    with pytest.raises(ValueError, match="expected the pinned"):
+        ri.build_linux_appimage(*args, None, other)
+
+
+def test_build_appimage_passes_pinned_runtime_to_appimagetool(tmp_path, monkeypatch):
+    root = _make_tree_with_licenses(tmp_path, LIN)
+    runtime = tmp_path / "runtime"
+    runtime.write_bytes(b"runtime")
+    monkeypatch.setattr(ri, "APPIMAGE_RUNTIME_SHA256", ri.sha256_hex(runtime))
+    calls = []
+
+    def fake_run(cmd, env, check):
+        calls.append(cmd)
+        Path(cmd[-1]).write_bytes(b"appimage")
+
+    monkeypatch.setattr(ri.subprocess, "run", fake_run)
+    out = ri.build_linux_appimage(
+        "v1.2.3", tmp_path / "dist", tmp_path / "work", "tool", root, None, runtime
+    )
+    assert calls == [
+        [
+            "tool",
+            "--runtime-file",
+            str(runtime),
+            str(tmp_path / "work" / "NdMatrix1.AppDir"),
+            str(out),
+        ]
+    ]
+    assert out.with_name(out.name + ".sha256").exists()
+
+
+def test_main_requires_runtime_for_appimage(tmp_path):
+    root = _make_tree_with_licenses(tmp_path, LIN)
+    with pytest.raises(ValueError, match="--appimage-runtime is required"):
+        ri.main(
+            [
+                "--target",
+                LIN.triple,
+                "--formats",
+                "appimage",
+                "--out",
+                str(tmp_path / "dist"),
+                "--work",
+                str(tmp_path / "work"),
+                "--root",
+                str(root),
+            ]
+        )
