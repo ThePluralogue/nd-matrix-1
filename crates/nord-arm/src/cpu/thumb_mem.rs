@@ -59,6 +59,7 @@ impl Cpu {
     }
 
     /// `add sp, #imm`, `push`, `pop`, `bkpt`.
+    #[allow(clippy::needless_range_loop)] // register-list bit i selects register i
     pub(crate) fn thumb_misc<B: Bus>(
         &mut self,
         bus: &mut B,
@@ -110,6 +111,7 @@ impl Cpu {
     }
 
     /// `ldmia rn!, {rlist}` and `stmia rn!, {rlist}`.
+    #[allow(clippy::needless_range_loop)] // register-list bit i selects register i
     pub(crate) fn thumb_ldm_stm<B: Bus>(&mut self, bus: &mut B, insn: u32) {
         let rn = (insn >> 8 & 7) as usize;
         let list = insn & 0xFF;

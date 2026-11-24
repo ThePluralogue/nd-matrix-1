@@ -151,6 +151,7 @@ impl Cpu {
         self.set_loaded(rd, v);
     }
 
+    #[allow(clippy::needless_range_loop)] // register-list bit i selects register i
     pub(crate) fn arm_ldm<B: Bus>(&mut self, bus: &mut B, insn: u32) {
         let (p, u, s, w, l) = (
             insn >> 24 & 1 != 0,

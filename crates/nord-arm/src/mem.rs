@@ -197,8 +197,8 @@ impl Mem {
                 continue; // zero pages hash like unmapped ones: mapping is not state
             }
             h = (h ^ p as u64).wrapping_mul(0x100_0000_01B3);
-            for c in page.chunks_exact(8) {
-                h = (h ^ u64::from_le_bytes(c.try_into().unwrap())).wrapping_mul(0x100_0000_01B3);
+            for c in page.as_chunks::<8>().0 {
+                h = (h ^ u64::from_le_bytes(*c)).wrapping_mul(0x100_0000_01B3);
                 h ^= h >> 29;
             }
         }
