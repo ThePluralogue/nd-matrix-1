@@ -14,6 +14,7 @@ mod hint_tests;
 mod names;
 pub(crate) mod oled;
 mod oled_arp;
+mod oled_fw;
 mod oled_types;
 mod oled_view;
 mod pots;
