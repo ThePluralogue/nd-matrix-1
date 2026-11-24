@@ -3,42 +3,64 @@
 //! Port of `tools/arm_emu.py` (`ArmEmu.__post_init__`, `install_dsp_ports`),
 //! `tools/arm_boot.py::install_boot_stubs`, `tools/arm_boot_full.py` (`install_ui_stubs`,
 //! `run_init_array`, `prepare`) and `tools/arm_steady.py` (`run_until`, `boot_to_main_loop`).
-//! All addresses below are `VERIFIED` by those scripts' disassembly notes unless tagged.
+//! Addresses are inherited from those scripts; each carries its own tag below.
 
 use super::sysbus::{COMM_COUNT, FAKE_BASE, PORT1_BASE, PORT2_BASE};
 use super::{Hook, Machine, Stop, LOW_MEMORY, SENTINEL, STACK_TOP};
 use crate::cpu::Bus;
 
+/// ASSUMED: ARM load address of `bank0_CODE.bin` (`tools/arm_emu.py` LOAD_BASE); the boot in
+/// `arm-lle-bench` reaches `MAIN_LOOP` from it, which would fail for a wrong base.
 pub const LOAD_BASE: u32 = 0xC000_0000;
+/// ASSUMED: `bank0_SRAM.bin` image address (`tools/arm_emu.py`), same check as `LOAD_BASE`.
 pub const SRAM_BASE: u32 = 0x8000_0000;
+/// ASSUMED: 16 MB mapped over the code image (`tools/arm_emu.py`).
 const RAM_SIZE: u32 = 0x0100_0000;
+/// ASSUMED: size of the fake DSP object/port region (`tools/arm_emu.py`).
 const FAKE_SIZE: u32 = 0x2_0000;
-/// ASSUMED: ARM926 code image of OS v1.66 `bank0_CODE.bin` (`tools/ns4_*`), loaded at `LOAD_BASE`.
+/// ASSUMED: address of the DSP flow-control function stubbed to return 1 (`tools/arm_boot.py`);
+/// confirm by disassembling `bank0_CODE.bin` there.
 pub const FLOW_CONTROL: u32 = 0xC006_CA48;
+/// ASSUMED: pointer cell of the DSP port object (`tools/arm_emu.py`); same confirmation.
 pub const PORT_OBJECT_PTR: u32 = 0xC055_B150;
+/// ASSUMED: table of the five DSP comm objects (`tools/arm_emu.py`); same confirmation.
 pub const COMM_TABLE: u32 = 0xC053_F8A4;
 /// ASSUMED: the comm objects pad path 2 messages with a zero word for chips 0..=2 (FX, PNO, ORG).
 pub const PAD: [u8; 5] = [1, 1, 1, 0, 0];
+/// ASSUMED: `operator new` of the firmware (`tools/arm_emu.py` bump allocator); same confirmation.
 pub const OPERATOR_NEW: u32 = 0xC025_D56C;
+/// ASSUMED: the MMU-enable `mcr` skipped by the harness (`tools/arm_boot.py`).
 const MMU_ENABLE_MCR: u32 = 0xC002_4624;
+/// ASSUMED: DSP download, SPI block download, logger, board-config query, SPI transfer and SPI
+/// count check addresses stubbed by `tools/arm_boot.py` / `tools/arm_boot_full.py`.
 const DSP_DOWNLOAD: u32 = 0xC024_1C58;
 const SPI_DOWNLOAD_BLOCK: u32 = 0xC024_0548;
 const LOGGER: u32 = 0xC008_0314;
 const BOARD_CONFIG_QUERY: u32 = 0xC024_BF70;
+/// ASSUMED: display event insert and text measure functions (`tools/arm_boot_full.py`).
 const EVENT_INSERT: u32 = 0xC001_B67C;
 const TEXT_MEASURE: u32 = 0xC001_B9D0;
 const SPI_TRANSFER: u32 = 0xC006_6E64;
 const SPI_COUNT_CHECK: u32 = 0xC022_81F0;
+/// ASSUMED: high exception vector page mapped by the harness.
 const HIGH_PAGE: u32 = 0xFFFF_0000;
+/// ASSUMED: static initialiser entry points run before the application thunk
+/// (`tools/arm_boot_full.py`); the boot fails to reach `MAIN_LOOP` if one is wrong.
 const INIT_ARRAY: [u32; 4] = [0xC000_02A4, 0xC024_D1A0, 0xC024_DC64, 0xC025_DBBC];
+/// ASSUMED: application entry thunk the boot calls (`tools/arm_steady.py`).
 pub const APP_THUNK: u32 = 0xC025_D524;
-/// VERIFIED (`docs/research/arm-organ-messages.md` s10): first instruction of the main loop body.
+/// EMPIRICAL: first instruction of the main loop body (`docs/research/arm-organ-messages.md`
+/// s10); the boot of `arm-lle-bench` stops there after about 232 M instructions every run.
 pub const MAIN_LOOP: u32 = 0xC00A_0248;
-/// VERIFIED (`tools/arm_steady.py`): AINTC handler table, indexed by system interrupt number.
+/// EMPIRICAL: AINTC handler table, indexed by system interrupt number (`tools/arm_steady.py`);
+/// injecting interrupt 22 ticks the firmware (`arm-lle-bench` message counts).
 pub const IRQ_TABLE: u32 = 0xC055_F674;
-/// VERIFIED (D130, `tools/arm_tick_probe.py timers`): system interrupt 22 is the 24 kHz timer.
+/// EMPIRICAL (D130, `tools/arm_tick_probe.py timers`): system interrupt 22 is the 24 kHz timer.
 pub const TIMER_IRQ: u32 = 22;
+/// ASSUMED: base of the bump allocator heap (`tools/arm_emu.py`); unused address space.
 const HEAP_BASE: u32 = 0x9000_0000;
+/// ASSUMED: 200,000 ARM instructions per 1 ms virtual tick (`tools/arm_steady.py`); see
+/// `docs/research/arm0-rust-runtime.md`.
 pub const CHUNK: u64 = 200_000;
 
 impl Machine {
@@ -111,7 +133,7 @@ impl Machine {
         let mut done = 0u64;
         let mut stop = Stop::Budget;
         while done < max {
-            let (_, s) = self.run(chunk.min(max - done), SENTINEL, stop_pc);
+            let (_, s) = self.run_wfi(chunk.min(max - done), SENTINEL, stop_pc);
             stop = s;
             done += chunk;
             self.bus.mem.zero(0, LOW_MEMORY as usize);
@@ -147,6 +169,9 @@ impl Machine {
 
     /// Run the registered handler of system interrupt `irq` as a call (`arm_steady.inject_irq`).
     pub fn inject_irq(&mut self, irq: u32) -> u32 {
+        if self.cpu.irq_off {
+            self.irq_while_masked += 1;
+        }
         let handler = self.bus.read32(IRQ_TABLE + 4 * irq);
         if handler != 0 {
             self.call_preserving(handler, &[], 2_000_000);

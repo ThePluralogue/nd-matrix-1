@@ -5,25 +5,33 @@
 //! then 0. The live-chip and initial-image layers of the Python module belong to `ns4-lle5`.
 
 use super::boot::COMM_TABLE;
-use super::sysbus::{COMM_COUNT, PORT1_BASE, PORT2_BASE};
-use super::system::Message;
+use super::grouper::Message;
 use super::Machine;
 use std::collections::HashMap;
 
-/// VERIFIED (disassembly, `docs/research/dsp-to-arm-return.md` s2): entry points, argument order.
+/// ASSUMED: entry points of the three SPI read routines, ported from `tools/arm_dsp_return.py`;
+/// confirm by disassembling `bank0_CODE.bin` at these addresses (`tools/arm_xref.py`).
 pub const SPI_READ4: u32 = 0xC001_19A4;
 pub const SPI_READ2: u32 = 0xC001_17E8;
 pub const SPI_READN: u32 = 0xC006_6E64;
+/// ASSUMED: comm index of the SY chip (`PAD`/`COMM_TABLE` order of `tools/arm_emu.py`).
 const SY_CHIP: u32 = 3;
-/// ASSUMED cap: the decoded sites read 1 to 4 words.
+/// ASSUMED: the decoded `SPI_READN` sites read 1 to 4 words; a larger count falls back.
 const READN_MAX: u32 = 4;
-/// VERIFIED (oracle run, `tools/arm_dsp_return.py`): SY idle voice mask words, 56 voices.
+/// ASSUMED: SY idle voice mask DM words (`tools/arm_dsp_return.py`, from the oracle run); confirm
+/// by reading DM `0x92196` from a SY oracle run with all voices idle.
 const IDLE_MASK: u32 = 0x92196;
+/// ASSUMED: SY release mask DM words, answered 0 (same source and check as `IDLE_MASK`).
 const RELEASE_MASK: u32 = 0x9219A;
+/// ASSUMED: SY voice count (`tools/arm_dsp_return.py`).
 const VOICES: u32 = 56;
+/// ASSUMED: DM address of the SY voice-state word of voice 0 (`tools/arm_dsp_return.py`).
 const STATE_BASE: u32 = 0x92414;
+/// ASSUMED: DM stride between voice-state words, `0x38` (`tools/arm_dsp_return.py`).
 const STATE_STRIDE: u32 = 0x38;
+/// ASSUMED: voice-state words meaning idle (`tools/arm_dsp_return.py`).
 const IDLE_STATES: [u32; 2] = [0x1C07B0, 0x1C0794];
+/// ASSUMED: voice-state words meaning busy (`tools/arm_dsp_return.py`).
 const BUSY_STATES: [u32; 2] = [0x1C07CD, 0x1C084C];
 
 /// Return source state.
@@ -32,7 +40,6 @@ pub struct DspReturn {
     pub shadow: HashMap<(u32, u32, u32), u32>,
     pub sy_idle: u64,
     pub reads: u64,
-    pending: HashMap<u32, Vec<(u32, u32)>>,
     seen: usize,
 }
 
@@ -42,7 +49,6 @@ impl Default for DspReturn {
             shadow: HashMap::new(),
             sy_idle: (1u64 << VOICES) - 1,
             reads: 0,
-            pending: HashMap::new(),
             seen: 0,
         }
     }
@@ -60,7 +66,7 @@ pub fn resolve(chip: u32, address: u32) -> (u32, u32) {
 }
 
 impl DspReturn {
-    fn observe(&mut self, m: &Message) {
+    pub fn observe(&mut self, m: &Message) {
         let chip = m.comm as u32;
         if m.path == 2 {
             let (core, dm) = resolve(chip, m.word1);
@@ -79,41 +85,12 @@ impl DspReturn {
         }
     }
 
-    /// Feed the port stores logged since the last call (grouping persists across calls).
-    pub fn sync(&mut self, writes: &[(u32, u32, u32)]) {
-        for &(port, value, pc) in &writes[self.seen.min(writes.len())..] {
-            let (path, comm, need) = if (PORT2_BASE..PORT2_BASE + 0x10 * COMM_COUNT).contains(&port)
-            {
-                let c = (port - PORT2_BASE) / 0x10;
-                (
-                    2u8,
-                    c,
-                    if super::boot::PAD[c as usize] != 0 {
-                        3
-                    } else {
-                        2
-                    },
-                )
-            } else if (PORT1_BASE..PORT1_BASE + 0x10 * COMM_COUNT).contains(&port) {
-                (1u8, (port - PORT1_BASE) / 0x10, 2)
-            } else {
-                continue;
-            };
-            let buf = self.pending.entry(port).or_default();
-            buf.push((value, pc));
-            if buf.len() == need {
-                let msg = Message {
-                    path,
-                    comm: comm as u8,
-                    word1: buf[0].0,
-                    word2: buf[need - 1].0,
-                    pc,
-                };
-                buf.clear();
-                self.observe(&msg);
-            }
+    /// Observe the messages logged since the last call (`log` is the bus message log).
+    pub fn sync(&mut self, log: &[Message]) {
+        for m in &log[self.seen.min(log.len())..] {
+            self.observe(m);
         }
-        self.seen = writes.len();
+        self.seen = log.len();
     }
 
     /// Called when the machine drains its port log.
@@ -146,10 +123,13 @@ impl DspReturn {
             || self.shadow.contains_key(&(chip, core, dm))
     }
 
-    pub fn read(&mut self, chip: u32, address: u32, count: u32) -> Vec<u32> {
+    /// Fill `out` with the words at `address` (no allocation).
+    pub fn read(&mut self, chip: u32, address: u32, out: &mut [u32]) {
         self.reads += 1;
         let (core, dm) = resolve(chip, address);
-        (0..count).map(|k| self.word(chip, core, dm + k)).collect()
+        for (k, w) in out.iter_mut().enumerate() {
+            *w = self.word(chip, core, dm.wrapping_add(k as u32));
+        }
     }
 }
 
@@ -165,7 +145,7 @@ impl Machine {
     /// Run the read routine at `pc` in place of the firmware code.
     pub(crate) fn dsp_read(&mut self, pc: u32) {
         let mut src = self.dsp_return.take().expect("installed");
-        src.sync(&self.bus.port_writes);
+        src.sync(&self.bus.messages);
         let r = self.cpu.r;
         let (chip, address, count, dst) = if pc == SPI_READN {
             let chip = (0..5u32)
@@ -179,15 +159,18 @@ impl Machine {
         let ok = pc != SPI_READN
             || (chip < 5 && count > 0 && count <= READN_MAX && src.knows(chip, address));
         if ok {
-            for (k, w) in src.read(chip, address, count).into_iter().enumerate() {
-                self.bus.mem.write32(dst + 4 * k as u32, w);
+            let mut words = [0u32; 4];
+            let words = &mut words[..count.min(4) as usize];
+            src.read(chip, address, words);
+            for (k, w) in words.iter().enumerate() {
+                self.bus.mem.write32(dst.wrapping_add(4 * k as u32), *w);
             }
         } else if pc == SPI_READN && dst != 0 {
             self.bus.mem.write32(dst, 0);
         }
         self.dsp_return = Some(src);
         self.cpu.r[0] = 0;
-        self.cpu.r[15] = self.cpu.r[14] & !1;
+        self.return_to_lr();
     }
 }
 
@@ -202,25 +185,33 @@ mod tests {
         assert_eq!(resolve(3, 0x92196), (0, 0x92196));
     }
 
+    fn msg(path: u8, comm: u8, word1: u32, word2: u32) -> Message {
+        Message {
+            path,
+            comm,
+            word1,
+            word2,
+            pc: 0,
+        }
+    }
+
     #[test]
     fn shadow_and_sy_mask_follow_the_arm_messages() {
         let mut r = DspReturn::default();
-        // PNO (comm 1, padded): address, pad, value; SY (comm 3) path 1 state message of voice 1
-        let w = [
-            (PORT2_BASE + 0x10, 0x2800_0010, 1),
-            (PORT2_BASE + 0x10, 0, 1),
-            (PORT2_BASE + 0x10, 0xAA55, 1),
-            (PORT1_BASE + 0x30, STATE_BASE + STATE_STRIDE, 2),
-            (PORT1_BASE + 0x30, 0x1C07CD, 2),
+        // PNO (comm 1) path 2 write, then a SY (comm 3) path 1 state message of voice 1
+        let log = [
+            msg(2, 1, 0x2800_0010, 0xAA55),
+            msg(1, 3, STATE_BASE + STATE_STRIDE, 0x1C07CD),
         ];
-        r.sync(&w);
-        assert_eq!(r.read(1, 0x2800_0010, 1), vec![0xAA55]);
+        r.sync(&log);
+        let mut w = [0u32; 1];
+        r.read(1, 0x2800_0010, &mut w);
+        assert_eq!(w, [0xAA55]);
         assert!(r.knows(1, 0x2800_0010) && !r.knows(1, 0x2800_0014));
-        assert_eq!(
-            r.read(SY_CHIP, IDLE_MASK, 2),
-            vec![0xFFFF_FFFD, 0x00FF_FFFF]
-        );
-        r.sync(&w);
+        let mut mask = [0u32; 2];
+        r.read(SY_CHIP, IDLE_MASK, &mut mask);
+        assert_eq!(mask, [0xFFFF_FFFD, 0x00FF_FFFF]);
+        r.sync(&log); // same log again: nothing is observed twice
         assert_eq!(r.shadow.len(), 2);
     }
 

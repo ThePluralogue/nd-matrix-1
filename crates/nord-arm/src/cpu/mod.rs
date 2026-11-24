@@ -52,7 +52,8 @@ pub struct Cpu {
 
 /// Supervisor mode, the reset mode.
 pub const MODE_SVC: u32 = 0x13;
-/// ARM926EJ-S main ID register.
+/// ASSUMED: ARM926EJ-S main ID register value `0x41069265` (r0p5, ARM926EJ-S TRM `DDI 0198E`);
+/// the firmware's use of it is not checked against the real core revision.
 pub const CP15_ID: u32 = 0x4106_9265;
 
 impl Default for Cpu {

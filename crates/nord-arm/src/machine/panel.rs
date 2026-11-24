@@ -7,14 +7,18 @@
 
 use std::collections::BTreeSet;
 
+/// ASSUMED: front-panel chip select 2 window, strobe and status words (`tools/arm_panel.py`).
 pub const CS2_BASE: u32 = 0x6000_0000;
 pub const CS2_END: u32 = CS2_BASE + 0x1000;
 pub const STROBE_ADDRESS: u32 = 0x6000_0015;
 pub const PANEL_STATUS: [u32; 2] = [0x6000_0010, 0x6000_0020];
-/// VERIFIED (disassembly `0xC024D648..0xC024D70C`, `tools/arm_panel.py`): panel detection routine.
+/// EMPIRICAL: panel detection routine `0xC024D648..0xC024D710` (`tools/arm_panel.py`); the
+/// boot of `arm-lle-bench` needs "present" answers inside it.
 pub const DETECT_RANGE: (u32, u32) = (0xC024_D648, 0xC024_D710);
+/// ASSUMED: a present key-matrix port reads `0x80` inside the detection routine.
 pub const PRESENT: u8 = 0x80;
-/// VERIFIED (run, `tools/arm_panel.py`): boot wait loop that needs the timer interrupt.
+/// EMPIRICAL: boot wait loop that needs the timer interrupt (`tools/arm_panel.py`); the boot of
+/// `arm-lle-bench` stalls there without the injected interrupt.
 pub const WAIT_LOOP: (u32, u32) = (0xC007_5D38, 0xC007_5D50);
 
 /// Key matrix: `(strobe, port, bit)` triples held low.

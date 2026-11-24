@@ -26,7 +26,12 @@ pub struct Mem {
     arena: Vec<u8>,
     /// Pages mapped on demand by an unmapped access (page base addresses, in order).
     pub auto_mapped: Vec<u32>,
+    /// Every on-demand mapping, also those past `AUTO_MAPPED_CAP`.
+    pub auto_mapped_count: u64,
 }
+
+/// Entries kept in `auto_mapped`.
+pub const AUTO_MAPPED_CAP: usize = 4096;
 
 impl Default for Mem {
     fn default() -> Self {
@@ -40,7 +45,19 @@ impl Mem {
             table: vec![0; PAGES],
             arena: Vec::new(),
             auto_mapped: Vec::new(),
+            auto_mapped_count: 0,
         }
+    }
+
+    /// Bytes of mapped guest memory (the arena size).
+    pub fn arena_bytes(&self) -> usize {
+        self.arena.len()
+    }
+
+    /// Reserve arena room for `pages` more pages so on-demand mapping does not reallocate (and
+    /// copy) the arena during a timed run.
+    pub fn reserve_pages(&mut self, pages: usize) {
+        self.arena.reserve(pages * PAGE_SIZE);
     }
 
     /// Page flags of the page holding `addr` (`HOOK_*` bits).
@@ -67,7 +84,10 @@ impl Mem {
 
     /// Map zero pages over `[base, base + size)` (already mapped pages keep their content).
     pub fn map(&mut self, base: u32, size: u32) {
-        let last = base.wrapping_add(size).wrapping_sub(1) >> PAGE_SHIFT;
+        if size == 0 {
+            return;
+        }
+        let last = base.saturating_add(size - 1) >> PAGE_SHIFT;
         for page in (base >> PAGE_SHIFT)..=last {
             self.ensure(page);
         }
@@ -91,7 +111,10 @@ impl Mem {
     fn map_on_demand(&mut self, addr: u32) -> usize {
         let page = addr >> PAGE_SHIFT;
         self.ensure(page);
-        self.auto_mapped.push(page << PAGE_SHIFT);
+        self.auto_mapped_count += 1;
+        if self.auto_mapped.len() < AUTO_MAPPED_CAP {
+            self.auto_mapped.push(page << PAGE_SHIFT);
+        }
         let e = self.table[page as usize] & !FLAGS;
         (e as usize - 1) * PAGE_SIZE + (addr as usize & (PAGE_SIZE - 1))
     }
@@ -224,6 +247,15 @@ mod tests {
         assert_eq!(m.read32(0x1234_5678), 0);
         assert!(m.is_mapped(0x1234_5000));
         assert_eq!(m.auto_mapped, vec![0x1234_5000]);
+    }
+
+    #[test]
+    fn map_of_zero_bytes_maps_nothing_and_a_range_to_the_top_does_not_wrap() {
+        let mut m = Mem::new();
+        m.map(0x1000, 0);
+        assert_eq!(m.arena_bytes(), 0);
+        m.map(0xFFFF_F000, 0x2000);
+        assert_eq!(m.arena_bytes(), PAGE_SIZE);
     }
 
     #[test]

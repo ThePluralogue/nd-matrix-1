@@ -2,9 +2,11 @@
 
 use std::collections::VecDeque;
 
-/// VERIFIED (disassembly of the ISR `0x80000434`, AINTC table `0xC055F674`): UART2 base and irq.
+/// EMPIRICAL: UART2 base and AINTC interrupt 61 (ISR `0x80000434`, `tools/arm_keydown.py`);
+/// MIDI notes sent through them reach the DSP ports in `arm-lle-bench`.
 pub const UART2_BASE: u32 = 0x01D0_D000;
 pub const UART2_IRQ: u32 = 61;
+/// ASSUMED: TI 16550 register offsets and status values (UART TRM), matching the ISR's reads.
 const LSR: u32 = 0x14;
 const IIR: u32 = 0x08;
 const RBR: u32 = 0x00;
@@ -13,8 +15,9 @@ const LSR_IDLE: u32 = 0x60;
 const LSR_READY: u32 = 0x61;
 const IIR_IDLE: u32 = 0x01;
 const IIR_RX: u32 = 0x04;
-/// VERIFIED (run, `docs/research/keydown-paths.md` s1): the board-present attach routine and the
-/// offset of the two "present" bytes in its configuration object.
+/// EMPIRICAL: the board-present attach routine and the offset of the two "present" bytes in
+/// its configuration object (`docs/research/keydown-paths.md` s1); without them no key reaches
+/// the DSP ports in `arm-lle-bench`.
 pub const BOARD_ATTACH: u32 = 0xC024_DB74;
 pub const BOARD_PRESENT_OFFSET: u32 = 0x12;
 

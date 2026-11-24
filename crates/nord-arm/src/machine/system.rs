@@ -2,6 +2,7 @@
 //! `tools/arm_keydown.py`, `tools/arm_panel.py::boot_with_panels`).
 
 use super::boot::{APP_THUNK, CHUNK, MAIN_LOOP, TIMER_IRQ};
+pub use super::grouper::Message;
 use super::idle::IdleStats;
 use super::panel::{KeyMatrix, WAIT_LOOP};
 use super::uart::{Uart2, BOARD_ATTACH, UART2_IRQ};
@@ -67,92 +68,50 @@ impl Machine {
         self.inject_irq(UART2_IRQ);
     }
 
-    /// Take the DSP messages logged since the last call, grouped (`arm_emu.group_port_writes`).
-    pub fn drain_messages(&mut self) -> Vec<Message> {
+    /// Move the messages completed since the last call into `out` (appended). Partial messages
+    /// stay in the bus grouper and complete on a later call.
+    pub fn drain_messages_into(&mut self, out: &mut Vec<Message>) {
         if let Some(r) = &mut self.dsp_return {
-            r.sync(&self.bus.port_writes);
+            r.sync(&self.bus.messages);
             r.reset_seen();
         }
-        let w = std::mem::take(&mut self.bus.port_writes);
-        group_port_writes(&w)
+        out.append(&mut self.bus.messages);
     }
-}
 
-/// One ARM to DSP message after grouping the port stores.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Message {
-    /// 1 or 2 (see `docs/research/arm-dsp-protocol.md`).
-    pub path: u8,
-    pub comm: u8,
-    pub word1: u32,
-    pub word2: u32,
-    pub pc: u32,
-}
-
-/// Group `(port, value, pc)` stores: path 2 ports carry `(address, [pad], value)`, path 1 ports
-/// `(word1, word2)`; incomplete trailing groups are dropped (`arm_emu.group_port_writes`).
-pub fn group_port_writes(writes: &[(u32, u32, u32)]) -> Vec<Message> {
-    use super::sysbus::{COMM_COUNT, PORT1_BASE, PORT2_BASE};
-    let mut pending: std::collections::HashMap<u32, Vec<(u32, u32)>> = Default::default();
-    let mut out = Vec::new();
-    for &(port, value, pc) in writes {
-        let (path, comm, need) = if (PORT2_BASE..PORT2_BASE + 0x10 * COMM_COUNT).contains(&port) {
-            let c = (port - PORT2_BASE) / 0x10;
-            (
-                2u8,
-                c,
-                if super::boot::PAD[c as usize] != 0 {
-                    3
-                } else {
-                    2
-                },
-            )
-        } else if (PORT1_BASE..PORT1_BASE + 0x10 * COMM_COUNT).contains(&port) {
-            (1u8, (port - PORT1_BASE) / 0x10, 2)
-        } else {
-            continue;
-        };
-        let buf = pending.entry(port).or_default();
-        buf.push((value, pc));
-        if buf.len() == need {
-            out.push(Message {
-                path,
-                comm: comm as u8,
-                word1: buf[0].0,
-                word2: buf[need - 1].0,
-                pc: buf[need - 1].1,
-            });
-            buf.clear();
-        }
+    /// [`Machine::drain_messages_into`] into a fresh vector.
+    pub fn drain_messages(&mut self) -> Vec<Message> {
+        let mut v = Vec::new();
+        self.drain_messages_into(&mut v);
+        v
     }
-    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cpu::Bus;
     use crate::machine::sysbus::{PORT1_BASE, PORT2_BASE};
 
     #[test]
-    fn grouping_follows_pad_and_path() {
-        let w = [
-            (PORT2_BASE + 0x10, 0x2800_0010, 1), // comm 1 (padded): addr, pad, value
-            (PORT2_BASE + 0x10, 0, 2),
-            (PORT2_BASE + 0x10, 0x3F80_0000, 3),
-            (PORT1_BASE + 0x30, 0x92414, 4), // comm 3 path 1: two words
-            (PORT1_BASE + 0x30, 0x1C0794, 5),
-            (PORT2_BASE, 0x2800_0000, 6), // incomplete
-        ];
-        let m = group_port_writes(&w);
-        assert_eq!(m.len(), 2);
-        assert_eq!(
-            (m[0].path, m[0].comm, m[0].word1, m[0].word2),
-            (2, 1, 0x2800_0010, 0x3F80_0000)
-        );
-        assert_eq!(
-            (m[1].path, m[1].comm, m[1].word2, m[1].pc),
-            (1, 3, 0x1C0794, 5)
-        );
+    fn a_message_split_across_two_drains_is_delivered_whole() {
+        let mut m = Machine::new();
+        m.bus.mem.map(PORT2_BASE, 0x2000);
+        m.bus.mem.map(PORT1_BASE, 0x1000);
+        m.install_dsp_return();
+        m.bus.write32(PORT2_BASE + 0x10, 0x2800_0010); // comm 1: addr, pad, value
+        m.bus.write32(PORT2_BASE + 0x10, 0);
+        assert!(m.drain_messages().is_empty());
+        m.bus.write32(PORT2_BASE + 0x10, 0xAB);
+        let got = m.drain_messages();
+        assert_eq!(got.len(), 1);
+        assert_eq!((got[0].word1, got[0].word2), (0x2800_0010, 0xAB));
+        // the DSP return shadow saw it exactly once
+        let r = m.dsp_return.as_ref().unwrap();
+        assert_eq!(r.shadow.get(&(1, 1, 4)), Some(&0xAB));
+        // and the next message is aligned
+        m.bus.write32(PORT1_BASE + 0x30, 5);
+        m.bus.write32(PORT1_BASE + 0x30, 6);
+        assert_eq!(m.drain_messages().len(), 1);
     }
 
     #[test]

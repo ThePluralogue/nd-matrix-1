@@ -5,6 +5,7 @@
 
 pub mod boot;
 pub mod dsp_return;
+pub mod grouper;
 mod hooks;
 pub mod i2c;
 pub mod idle;
@@ -27,6 +28,11 @@ pub const STACK_TOP: u32 = 0x700F_0000;
 /// Size of the zero-filled null-call guard at address 0 (`ArmEmu.guard_null_calls`).
 pub const LOW_MEMORY: u32 = 0x1_0000;
 
+/// Hook runs in a row without a CPU step before `run` gives up (a stub returning to a hooked pc).
+pub const HOOK_SPIN: u32 = 64;
+/// Entries kept in `null_calls`; later ones only increment `null_call_count`.
+pub const NULL_CALL_CAP: usize = 4096;
+
 /// Why [`Machine::run`] returned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stop {
@@ -37,6 +43,8 @@ pub enum Stop {
     /// `pc` reached the `stop_pc` address (about to execute it).
     StopPc,
     Fault(Fault),
+    /// A hook returned to a hooked address [`HOOK_SPIN`] times without executing an instruction.
+    HookLoop(u32),
 }
 
 /// CPU + bus + hooks.
@@ -47,11 +55,18 @@ pub struct Machine {
     pub(crate) hooks: HashMap<u32, Hook>,
     /// Calls fetched from page 0 (null guard): `(address, lr)`.
     pub null_calls: Vec<(u32, u32)>,
+    /// Every null call, also those past `NULL_CALL_CAP`.
+    pub null_call_count: u64,
+    /// `WFI` instructions executed (both run paths: the rest of the budget is skipped).
+    pub wfi: u64,
+    /// Interrupts injected while the CPSR I bit was set (`inject_irq` ignores the mask, as the
+    /// Python harness does).
+    pub irq_while_masked: u64,
     pub null_guard: bool,
     /// Address that stops `run_idle_skip` before executing it (boot to the main loop).
     pub stop_pc: Option<u32>,
     pub dsp_return: Option<dsp_return::DspReturn>,
-    pub(crate) heap_top: u32,
+    pub heap_top: u32,
 }
 
 impl Default for Machine {
@@ -69,6 +84,9 @@ impl Machine {
             bus,
             hooks: HashMap::new(),
             null_calls: Vec::new(),
+            null_call_count: 0,
+            wfi: 0,
+            irq_while_masked: 0,
             null_guard: false,
             stop_pc: None,
             dsp_return: None,
@@ -118,6 +136,7 @@ impl Machine {
         let mut page = u32::MAX;
         let mut hooked = false;
         let stop = stop_pc.unwrap_or(u32::MAX);
+        let mut spin = 0u32;
         let reason = loop {
             if self.cpu.insns >= limit {
                 break Stop::Budget;
@@ -135,14 +154,34 @@ impl Machine {
             }
             if hooked && self.run_hook(pc) {
                 page = u32::MAX;
+                spin += 1;
+                if spin >= HOOK_SPIN {
+                    break Stop::HookLoop(self.cpu.r[15]);
+                }
                 continue;
             }
+            spin = 0;
             self.bus.pc = pc;
             if let Err(f) = self.cpu.step(&mut self.bus) {
                 break Stop::Fault(f);
             }
         };
         (self.cpu.insns - start, reason)
+    }
+
+    /// [`Machine::run`] with the one `WFI` semantic of both run paths: the instruction completes
+    /// and the rest of the budget is skipped (virtual time jumps to the end; the tick interrupt is
+    /// the only wake-up the harness models).
+    pub fn run_wfi(&mut self, max: u64, until: u32, stop_pc: Option<u32>) -> (u64, Stop) {
+        let start = self.cpu.insns;
+        let end = start + max;
+        let (_, stop) = self.run(max, until, stop_pc);
+        if stop == Stop::Fault(Fault::Wfi) {
+            self.wfi += 1;
+            self.cpu.insns = end;
+            return (max, Stop::Budget);
+        }
+        (self.cpu.insns - start, stop)
     }
 
     /// Hash of registers, CPSR and every non-zero memory page (equivalence checks).

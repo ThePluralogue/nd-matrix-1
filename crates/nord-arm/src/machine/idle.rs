@@ -146,6 +146,7 @@ impl Machine {
                 Stop::Budget => {}
                 Stop::Fault(Fault::Wfi) => {
                     stats.wfi += 1;
+                    self.wfi += 1;
                     stats.skipped += end - self.cpu.insns;
                     self.cpu.insns = end;
                     return Stop::Budget;
@@ -162,6 +163,7 @@ impl Machine {
             stats.executed += self.cpu.insns - before;
             if let Some(Stop::Fault(Fault::Wfi)) = stop {
                 stats.wfi += 1;
+                self.wfi += 1;
                 stats.skipped += end - self.cpu.insns;
                 self.cpu.insns = end;
                 return Stop::Budget;
@@ -272,5 +274,18 @@ mod tests {
         assert_eq!(m.run_idle_skip(200_000, &mut st), Stop::Budget);
         assert_eq!((st.wfi, st.skipped), (1, 199_999));
         assert_eq!(m.cpu.insns, 200_000);
+    }
+
+    #[test]
+    fn wfi_has_one_semantic_in_the_full_and_the_skipping_path() {
+        // mcr p15,0,r0,c7,c0,4 ; add r1,r1,#1 ; b .   (the add runs once, then spins)
+        let code = [0xEE07_0F90, 0xE281_1001, 0xEAFF_FFFE];
+        let (mut a, mut b) = (machine(&code), machine(&code));
+        let mut st = IdleStats::default();
+        assert_eq!(a.run_tick_idle(10_000, &mut st), Stop::Budget);
+        assert_eq!(b.run_tick(10_000), Stop::Budget);
+        assert_eq!((a.wfi, b.wfi), (1, 1));
+        assert_eq!(a.state_hash(), b.state_hash());
+        assert_eq!((a.cpu.insns, a.reg(1)), (b.cpu.insns, b.reg(1)));
     }
 }

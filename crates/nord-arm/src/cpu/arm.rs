@@ -2,6 +2,10 @@
 
 use super::{Bus, Cpu, Fault, CP15_ID};
 
+/// ASSUMED: ARM926EJ-S cache type register as in the TRM example (`0x0D152152`: 16 KB I and D
+/// caches); firmware only reads it for cache maintenance sizing, confirm with the real core.
+const CP15_CACHE_TYPE: u32 = 0x0D15_2152;
+
 impl Cpu {
     #[inline(always)]
     pub(crate) fn cond(&self, cond: u32) -> bool {
@@ -198,7 +202,7 @@ impl Cpu {
             let v = match (insn >> 16 & 0xF, insn >> 5 & 7, insn & 0xF) {
                 (0, 0, 0) => CP15_ID,
                 (1, 0, 0) => self.cp15_ctrl,
-                (0, 1, 0) => 0x0D15_2152, // cache type
+                (0, 1, 0) => CP15_CACHE_TYPE,
                 _ => 0,
             };
             if rd == 15 {

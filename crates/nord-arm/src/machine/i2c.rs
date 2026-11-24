@@ -2,9 +2,13 @@
 //!
 //! Register-level model of the TI I2C block at `0x01C22000`: master transmit and receive with or
 //! without a stop, the `ICSTR` ready flags and the 16 bit address write of random reads.
-//! ASSUMED: AM1808 TRM register layout (corroborated by the driver's polling masks); VERIFIED:
-//! four 64 KB devices at slave addresses `0x50..0x53` (addresses `0x0000..0xFFFF` on each).
+//! ASSUMED: AM1808 TRM register layout (corroborated by the driver's polling masks); EMPIRICAL:
+//! four 64 KB devices at slave addresses `0x50..0x53` (the firmware reads a program back through
+//! them in `arm-lle-bench`).
 
+/// Entries kept in `I2cBus::log`.
+pub const LOG_CAP: usize = 4096;
+/// ASSUMED: TI AM1808 I2C0 base and register offsets (TRM); the firmware driver's accesses match.
 pub const I2C_BASE: u32 = 0x01C2_2000;
 pub const I2C_END: u32 = I2C_BASE + 0x1000;
 pub const I2C_STR: u32 = 0x08;
@@ -99,8 +103,16 @@ impl I2cBus {
     /// Load the 256 KB image (four 64 KB devices back to back).
     pub fn load_image(&mut self, blob: &[u8]) {
         for (i, e) in self.eeproms.iter_mut().enumerate() {
-            e.data
-                .copy_from_slice(&blob[i * EEPROM_SIZE..(i + 1) * EEPROM_SIZE]);
+            let part = blob.get(i * EEPROM_SIZE..).unwrap_or(&[]);
+            let n = part.len().min(EEPROM_SIZE);
+            e.data[..n].copy_from_slice(&part[..n]);
+        }
+    }
+
+    /// Log one transaction (capped at `LOG_CAP`).
+    fn note(&mut self, read: u8) {
+        if self.log.len() < LOG_CAP {
+            self.log.push((self.sar, read, self.cnt));
         }
     }
 
@@ -162,7 +174,7 @@ impl I2cBus {
             return;
         }
         if self.mdr & MDR_TRX != 0 {
-            self.log.push((self.sar, 1, self.cnt));
+            self.note(1);
             self.rx_left = 0;
             if self.cnt == 0 {
                 self.finish();
@@ -170,7 +182,7 @@ impl I2cBus {
                 self.status |= STR_XRDY;
             }
         } else {
-            self.log.push((self.sar, 0, self.cnt));
+            self.note(0);
             self.rx_left = self.cnt;
             self.next_rx();
             if self.rx_left == 0 {
@@ -280,5 +292,10 @@ mod tests {
         }
         bus.load_image(&img);
         assert_eq!(bus.eeproms[3].data[0], 4);
+        // a short image fills what it has and does not panic
+        let mut short = I2cBus::new();
+        short.load_image(&img[..EEPROM_SIZE + 5]);
+        assert_eq!(short.eeproms[1].data[0], 2);
+        assert_eq!(short.eeproms[2].data[0], 0xFF);
     }
 }

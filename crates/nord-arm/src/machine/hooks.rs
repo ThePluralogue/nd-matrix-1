@@ -6,8 +6,9 @@ use crate::cpu::Bus;
 /// A hook runs when the instruction at its address is about to execute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hook {
-    /// Replace the function: `r0 = value`, then return to the caller (`pc = lr & !1`, the state
-    /// bit is left as is, like `arm_emu.ArmEmu._stub_hook`).
+    /// Replace the function: `r0 = value`, then return to the caller (`pc = lr & !1`, Thumb state
+    /// from `lr` bit 0; `arm_emu.ArmEmu._stub_hook` left the state unchanged, which differs only
+    /// for an interworking return).
     Return(u32),
     /// `operator new` bump allocator over zero pages (`ArmEmu.bump_new`).
     BumpNew,
@@ -31,9 +32,12 @@ impl Machine {
     /// Run the hook at `pc`. Returns true when `pc` was redirected (the caller re-examines it).
     pub(crate) fn run_hook(&mut self, pc: u32) -> bool {
         if pc < LOW_MEMORY && self.null_guard {
-            self.null_calls.push((pc, self.cpu.r[14]));
+            self.null_call_count += 1;
+            if self.null_calls.len() < super::NULL_CALL_CAP {
+                self.null_calls.push((pc, self.cpu.r[14]));
+            }
             self.cpu.r[0] = 0;
-            self.cpu.r[15] = self.cpu.r[14] & !1;
+            self.return_to_lr();
             return true;
         }
         let Some(h) = self.hooks.get(&pc).copied() else {
@@ -61,9 +65,9 @@ impl Machine {
             Hook::SkipInsn => self.cpu.r[15] = pc.wrapping_add(4),
             Hook::DspRead => self.dsp_read(pc),
             Hook::BoardPresent => {
-                let a = self.cpu.r[0] + super::uart::BOARD_PRESENT_OFFSET;
+                let a = self.cpu.r[0].wrapping_add(super::uart::BOARD_PRESENT_OFFSET);
                 self.bus.mem.write8(a, 1);
-                self.bus.mem.write8(a + 1, 1);
+                self.bus.mem.write8(a.wrapping_add(1), 1);
                 return false;
             }
             Hook::ZeroR5 => {
@@ -76,7 +80,15 @@ impl Machine {
 
     fn stub_return(&mut self, r0: u32) {
         self.cpu.r[0] = r0;
-        self.cpu.r[15] = self.cpu.r[14] & !1;
+        self.return_to_lr();
+    }
+
+    /// `bx lr`: the return address picks the instruction set (bit 0 = Thumb), as the real return
+    /// of the replaced function would.
+    pub(crate) fn return_to_lr(&mut self) {
+        let lr = self.cpu.r[14];
+        self.cpu.thumb = lr & 1 != 0;
+        self.cpu.r[15] = lr & !1;
     }
 }
 
@@ -101,6 +113,33 @@ mod tests {
         let (n, stop) = m.run(2, 0, None);
         assert_eq!((n, stop), (2, Stop::Budget));
         assert_eq!((m.reg(0), m.reg(2)), (0x55, 9));
+    }
+
+    #[test]
+    fn stub_return_takes_the_instruction_set_from_lr() {
+        let mut m = m();
+        m.add_hook(0xC000_0100, Hook::Return(1));
+        // Thumb caller: lr has bit 0 set
+        m.cpu.thumb = true;
+        m.cpu.r[14] = 0xC000_0201;
+        m.cpu.r[15] = 0xC000_0100;
+        assert!(m.run_hook(0xC000_0100));
+        assert_eq!((m.cpu.r[15], m.cpu.thumb), (0xC000_0200, true));
+        // ARM caller of the same stub, machine left in Thumb state by the callee
+        m.cpu.thumb = true;
+        m.cpu.r[14] = 0xC000_0300;
+        assert!(m.run_hook(0xC000_0100));
+        assert_eq!((m.cpu.r[15], m.cpu.thumb), (0xC000_0300, false));
+    }
+
+    #[test]
+    fn a_stub_returning_to_a_hooked_pc_stops_instead_of_spinning() {
+        let mut m = m();
+        m.add_hook(0xC000_0100, Hook::Return(1));
+        m.cpu.r[14] = 0xC000_0100;
+        m.cpu.r[15] = 0xC000_0100;
+        let (n, stop) = m.run(1_000, 0, None);
+        assert_eq!((n, stop), (0, Stop::HookLoop(0xC000_0100)));
     }
 
     #[test]

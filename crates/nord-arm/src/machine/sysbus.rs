@@ -2,6 +2,7 @@
 //! access). Ports `tools/arm_boot.py` (`install_tick`, `install_gpio_echo`), `tools/arm_emu.py`
 //! (`enable_poll_breaker`, the fake DSP ports) with the same constants.
 
+use super::grouper::{Grouper, Message};
 use super::i2c::{I2cBus, I2C_BASE, I2C_END};
 use super::panel::{KeyMatrix, CS2_BASE, CS2_END, PANEL_STATUS};
 use super::uart::Uart2;
@@ -9,8 +10,8 @@ use crate::cpu::Bus;
 use crate::mem::{Mem, HOOK_R, HOOK_W};
 use std::collections::HashMap;
 
-/// VERIFIED (`tools/arm_boot.py` TICK_ADDRESS: `ldrd` delay-loop time base at `0xC0080684`): the
-/// 64 bit RTOS tick. Role ASSUMED from use.
+/// ASSUMED: address of the 64 bit RTOS tick read by the `ldrd` delay loop at `0xC0080684`
+/// (`tools/arm_boot.py` TICK_ADDRESS); confirm by tracing that loop on a boot.
 pub const TICK_ADDRESS: u32 = 0x8000_1DC0;
 /// ASSUMED: TI AM1808 GPIO block, bank stride and count (`tools/arm_boot.py`).
 pub const GPIO_BASE: u32 = 0x01E2_6000;
@@ -41,8 +42,9 @@ pub const POLL_VALUES: [u32; 8] = [
 ];
 const POLL_LIMIT: u32 = 40;
 
-/// One logged store to a fake DSP port: `(port, value, pc)`.
-pub type PortWrite = (u32, u32, u32);
+/// Most messages the bus keeps between two drains; later ones are counted in
+/// [`SysBus::dropped_messages`], not stored (the caller drains every tick).
+pub const MESSAGE_CAP: usize = 1 << 18;
 
 /// Memory plus device state.
 #[derive(Clone)]
@@ -56,7 +58,11 @@ pub struct SysBus {
     pub gpio_writes: u64,
     poll_counts: HashMap<(u32, u32), u32>,
     pub poll_hits: u64,
-    pub port_writes: Vec<PortWrite>,
+    /// Grouping state of the port stores (survives drains).
+    pub grouper: Grouper,
+    /// Completed ARM to DSP messages since the last drain.
+    pub messages: Vec<Message>,
+    pub dropped_messages: u64,
     /// Reads that reached a device window (profiling).
     pub device_reads: u64,
     /// Optional board models; `None` leaves the page to the poll breaker.
@@ -81,7 +87,9 @@ impl SysBus {
             gpio_writes: 0,
             poll_counts: HashMap::new(),
             poll_hits: 0,
-            port_writes: Vec::new(),
+            grouper: Grouper::default(),
+            messages: Vec::new(),
+            dropped_messages: 0,
             device_reads: 0,
             panel: None,
             i2c: None,
@@ -153,7 +161,13 @@ impl SysBus {
     #[cold]
     fn on_write(&mut self, addr: u32, value: u32) {
         if (PORT2_BASE..PORT_END).contains(&addr) {
-            self.port_writes.push((addr & !0xF, value, self.pc));
+            if let Some(m) = self.grouper.push(addr & !0xF, value, self.pc) {
+                if self.messages.len() < MESSAGE_CAP {
+                    self.messages.push(m);
+                } else {
+                    self.dropped_messages += 1;
+                }
+            }
         }
         if let Some(bus) = &mut self.i2c {
             if (I2C_BASE..I2C_END).contains(&addr) {
@@ -304,18 +318,22 @@ mod tests {
     }
 
     #[test]
-    fn dsp_port_stores_are_logged_with_pc_and_masked_value() {
+    fn dsp_port_stores_group_into_messages_with_pc_and_masked_value() {
         let mut b = bus();
         b.mem.map(PORT2_BASE, 0x2000);
         b.pc = 0xC000_0200;
-        b.write32(PORT2_BASE + 0x10, 0x1234_5678);
-        b.write8(PORT1_BASE + 0x21, 0xFFFF_FFFFu32 as u8);
+        // comm 3 (path 1, two words): the low byte store masks to the port address
+        b.write32(PORT1_BASE + 0x30, 0x1234_5678);
+        b.write8(PORT1_BASE + 0x31, 0xFF);
         assert_eq!(
-            b.port_writes,
-            vec![
-                (PORT2_BASE + 0x10, 0x1234_5678, 0xC000_0200),
-                (PORT1_BASE + 0x20, 0xFF, 0xC000_0200)
-            ]
+            b.messages,
+            vec![Message {
+                path: 1,
+                comm: 3,
+                word1: 0x1234_5678,
+                word2: 0xFF,
+                pc: 0xC000_0200
+            }]
         );
     }
 
