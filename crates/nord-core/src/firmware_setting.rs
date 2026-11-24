@@ -2,7 +2,7 @@
 //! remember it, report whether the WAVE tables load. Reads the file on demand; stores only its path.
 
 use crate::render_opts_wave::WAVE_TABLES_ENV;
-use crate::user_config::{self, UserConfig};
+use crate::user_config;
 use std::path::{Path, PathBuf};
 
 /// Official download links of the current OS (v1.66). VERIFIED: both answered `302` to a HEAD
@@ -69,18 +69,13 @@ pub fn set(path: &Path, config: &Path) -> Result<usize, String> {
     let abs = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = abs.to_string_lossy();
     let shown = shown.strip_prefix(r"\\?\").unwrap_or(&shown).to_string();
-    user_config::save(
-        config,
-        &UserConfig {
-            os_update_path: Some(shown),
-        },
-    )?;
+    user_config::update(config, |c| c.os_update_path = Some(shown))?;
     Ok(n)
 }
 
 /// Forgets the saved path.
 pub fn clear(config: &Path) -> Result<(), String> {
-    user_config::save(config, &UserConfig::default())
+    user_config::update(config, |c| c.os_update_path = None)
 }
 
 /// Plain-language text of a [`Status`] for the CLI and the GUI.
@@ -149,6 +144,7 @@ pub fn run(args: &[String], config: &Path, env: Option<&str>) -> Result<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::user_config::UserConfig;
 
     fn cfg(name: &str) -> PathBuf {
         std::env::temp_dir()
@@ -192,6 +188,7 @@ mod tests {
             &c,
             &UserConfig {
                 os_update_path: Some("/saved".into()),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -239,12 +236,29 @@ mod tests {
     }
 
     #[test]
+    fn set_and_clear_keep_the_saved_engine_choice() {
+        let c = cfg("keep-engine");
+        user_config::update(&c, |u| u.engine = Some("lle".into())).unwrap();
+        let img = std::env::temp_dir().join(format!("ns4-fwset-keep-{}.bin", std::process::id()));
+        std::fs::write(&img, crate::synth::fw_wave_tables::tests::image()).unwrap();
+        set(&img, &c).unwrap();
+        assert_eq!(
+            user_config::load(&c).unwrap().engine.as_deref(),
+            Some("lle")
+        );
+        clear(&c).unwrap();
+        let u = user_config::load(&c).unwrap();
+        assert_eq!((u.os_update_path, u.engine.as_deref()), (None, Some("lle")));
+    }
+
+    #[test]
     fn clear_forgets_and_unknown_subcommands_print_usage() {
         let c = cfg("clear");
         user_config::save(
             &c,
             &UserConfig {
                 os_update_path: Some("/x".into()),
+                ..Default::default()
             },
         )
         .unwrap();

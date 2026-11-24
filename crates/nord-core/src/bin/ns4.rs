@@ -9,7 +9,7 @@ use std::env;
 use std::fs;
 
 const SAMPLE_RATE: f32 = 48_000.0;
-const RENDER_USAGE: &str = "usage: ns4 render-patch <file.ns4p | entry-in-backup> [--backup <file.ns4b> [--program-file <edited.ns4p>]] [--wav <out.wav>] [--note N | --notes 60,64,67 | --events <notes.json> [--confirmed-only]] [--velocity V] [--frames F] [--hold F] [--sustain] [--cc ctrl:val@frame] [--tone-source default|legacy|firmware|vox|b3wheels] [--filter-engine zdf|firmware] [--synth-chain legacy|strip] [--b3-tail on|off] [--farfisa-processor on|off] [--amp-path engine|firmware] [--rotary-drive engine|unity|scaled] [--firmware-fx] [--firmware-reverb] [--firmware-fx-ports all|parity|delay-laws,delay-time,reverb-mix,reverb,compressor,mod1,mod2,eq] [--legacy-fx-ports] [--legacy-fx-rate] [--legacy-compressor-row] [--mod1-unit-calls] [--legacy-mod2] [--legacy-piano-level] [--firmware-routing] [--measured-laws] [--firmware-all|--legacy-all]...";
+const RENDER_USAGE: &str = "usage: ns4 render-patch <file.ns4p | entry-in-backup> [--backup <file.ns4b> [--program-file <edited.ns4p>]] [--wav <out.wav>] [--note N | --notes 60,64,67 | --events <notes.json> [--confirmed-only]] [--velocity V] [--frames F] [--hold F] [--sustain] [--cc ctrl:val@frame] [--tone-source default|legacy|firmware|vox|b3wheels] [--filter-engine zdf|firmware] [--synth-chain legacy|strip] [--b3-tail on|off] [--farfisa-processor on|off] [--amp-path engine|firmware] [--rotary-drive engine|unity|scaled] [--firmware-fx] [--firmware-reverb] [--firmware-fx-ports all|parity|delay-laws,delay-time,reverb-mix,reverb,compressor,mod1,mod2,eq] [--legacy-fx-ports] [--legacy-fx-rate] [--legacy-compressor-row] [--mod1-unit-calls] [--legacy-mod2] [--legacy-piano-level] [--firmware-routing] [--measured-laws] [--firmware-all|--legacy-all] [--engine hle|lle]...";
 
 fn run_cli(args: &[String]) -> Result<String, String> {
     let cmd = args.get(1).map(String::as_str).unwrap_or("info");
@@ -491,6 +491,9 @@ fn main() {
     // the saved update file fills NS4_WAVE_TABLES, except for `ns4 firmware` which reports the raw setting
     if args.get(1).map(String::as_str) != Some("firmware") {
         nord_core::user_config::apply_saved_default();
+        // opt-in `--engine lle` (D2/D119): never fatal, a fallback to the built-in engine prints why
+        // (the offline commands below always render with the built-in engine until LLE exists)
+        nord_core::engine_select::startup("ns4", &args);
     }
     match run_cli(&args) {
         Ok(out) => println!("{out}"),

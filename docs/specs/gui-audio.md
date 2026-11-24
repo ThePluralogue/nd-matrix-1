@@ -61,3 +61,19 @@ Code: `audio/{priority,garbage,probe}.rs`, `audio/callback.rs`, `fx/master.rs`, 
 ### Program reload bench
 
 `ns4 bench --gui --backup <.ns4b> --program <entry> --reload N [--reload-pool K] [--program2 <entry>]` plays a chord, applies N programs in turn (the named ones, then K programs spread over the archive) with `apply_program` and times the call and the three blocks after it: the cost of a program change inside the callback and of the stages it builds lazily.
+
+## Engine selection (D243, `ns4-lle7`)
+
+HLE (this spec's engine) is the default. The opt-in low-level engine (LLE) does not exist yet; the selection seam does, so the final wiring is small.
+
+| Item | Value |
+|---|---|
+| Type | `nord_core::engine_select::EngineKind { Hle, Lle }` (default `Hle`) |
+| Request, first match wins | `--engine hle\|lle`, `NS4_ENGINE`, config key `engine` in `<config dir>/ns4/config.json`, `hle` |
+| Probe | `LleBackend::probe()` returns `Available` or `Unavailable(reason)`; STUB, always `Unavailable` |
+| Resolve | `resolve(requested, os_update, probe)`: LLE runs only with an update file set and `Available`; else HLE runs with a notice |
+| Notice, no update file | names the Nord OS update file and `ns4 firmware set "<file>"` / Settings > OS & Wave Tables |
+| Notice, backend missing | repeats the probe reason; never a panic, never silent |
+| Surfaces | `ns4` and `nd-matrix-1` print the notice on stderr at start; the Engine radio in the OS & Wave Tables settings (standalone and plugin) shows it and saves the choice (applies at next start) |
+
+`ns4 firmware set|clear` keeps the saved engine key. An unknown engine value is reported and HLE runs. Status: seam implemented and unit-tested; LLE itself and real-time stability in DAW hosts are not.
