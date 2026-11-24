@@ -3,14 +3,14 @@
 title: 'Additional permission for musicians (paid performances and recordings)'
 status: in-progress
 type: task
-priority: normal
+priority: low
 created_at: 2026-11-23T16:00:00Z
-updated_at: 2026-11-23T16:00:00Z
+updated_at: 2026-11-23T21:25:00Z
 parent: ns4-9wq1
 ---
 
 ## Context
-PolyForm Noncommercial 1.0.0 counts personal use as permitted only "without any anticipated commercial application". A musician who plays the emulator on a paid gig or a sold recording is arguably outside the license. The licensor can grant extra permissions.
+PolyForm Noncommercial 1.0.0 counts personal use as permitted only "without any anticipated commercial application". A musician who plays the emulator on a paid gig or a sold recording is arguably outside the license. The licensor can grant extra permissions. Under the $0 legal budget, paid counsel review (`ns4-ns2j`) is deferred.
 
 ## Higher Goal
 Musicians can use the instrument for their work while selling, sublicensing or bundling the software stays forbidden.

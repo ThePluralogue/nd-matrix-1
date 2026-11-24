@@ -5,14 +5,16 @@ status: in-progress
 type: epic
 priority: normal
 created_at: 2026-11-23T16:00:00Z
-updated_at: 2026-11-23T16:00:00Z
+updated_at: 2026-11-23T21:25:00Z
 ---
 
 ## Context
-On 2026-11-23 the project closed its main legal gaps: a real PolyForm Noncommercial license (D231), DCO and docs/LEGAL.md (D232), the firmware-derived ratchet (D128), trademark cleanup in UI and bundles, removal of vendor photos, a permissive VST3 binding with a copyleft gate (D233), third-party notices in releases (D238), and a history rewrite purging vendor files. Some follow-ups need the owner, counsel or later engineering work.
+On 2026-11-23 the project closed its main legal gaps: a real PolyForm Noncommercial license (D231), DCO and docs/LEGAL.md (D232), the firmware-derived ratchet (D128), trademark cleanup in UI and bundles, removal of vendor photos, a permissive VST3 binding with a copyleft gate (D233), third-party notices in releases (D238), musician permission and trademark policy (D241), and a history rewrite purging vendor files.
+
+Updated 2026-11-23 for a **$0 legal budget**: prioritize concrete, zero-cost engineering mitigations (removing remaining Class B/C firmware-derived files, neutral non-red default panel theme, removing `nord-` from shipped binaries, removing in-GUI monetization, keeping DCO without a CLA) and defer paid counsel / trademark registration unless the project ever commercializes or receives a legal notice.
 
 ## Higher Goal
-ND Matrix 1 stays a non-commercial, source-available interoperability project with a defensible legal posture: no vendor material, correct licensing, clear names, and reviewed risks.
+ND Matrix 1 stays a strictly non-commercial, source-available interoperability project with a strong $0-budget legal posture: zero vendor material in tree or history, clean licensing, distinct visual identity, and a prompt takedown response process.
 
 ## Acceptance Criteria
 Done:
@@ -25,20 +27,27 @@ Done:
 - [x] ns4-q7lp Plugin licensing research (D233)
 - [x] ns4-q7vn Updater terms and patent question
 - [x] ns4-tpn7 Third-party notices (D238)
-- [x] History rewrite of 2026-11-23 (docs/LEGAL.md section 8 question 5)
+- [x] ns4-9ngp Keep DCO (no CLA) under the $0 legal budget; `ADDITIONAL-PERMISSIONS.md` updated to cover contributors
+- [x] ns4-sgro Licenses of the AppImage runtime shipped in Linux releases (D242, PR #638)
+- [x] History rewrite of 2026-11-23 (docs/LEGAL.md section 8 question 5; `v0.1.0`–`v0.1.2` tags moved)
 
-Open:
-- [ ] ns4-pvb3 Permissive VST3 binding: DAW host checks
-- [ ] ns4-u8o2 Move firmware-derived tables to runtime loading
-- [ ] ns4-vt4r Move release tags and purge old PR refs after the history rewrite (Owner action)
+Open — Tier 1 ($0 quick wins):
+- [ ] ns4-b9rn Rename `nord-plugin-standalone` and remove vendor prefix from shipped binaries
+- [ ] ns4-s3pn Remove in-GUI sponsorship button to keep strictly non-commercial posture
+- [ ] ns4-vt4r Verify GitHub Releases for moved tags and request GitHub Support purge of old PR refs (Owner action)
 - [ ] ns4-6fbu Repository settings: required checks and description (Owner action)
-- [ ] ns4-4qmh Additional permission for musicians (paid performances and recordings) (drafted in D241, counsel review pending)
-- [ ] ns4-0s8y Trademark policy for the ND Matrix 1 name (drafted in D241, registration pending)
-- [ ] ns4-9ngp Decide DCO or CLA for contributions (Owner decision)
-- [ ] ns4-ns2j Counsel review of docs/LEGAL.md open questions (Owner action)
-- [x] ns4-sgro Licenses of the AppImage runtime shipped in Linux releases
+- [ ] ns4-d7mg Check macOS `.dmg` updater and `nordkeyboards.com` terms (free check)
+
+Open — Tier 2 ($0 high-impact engineering):
+- [ ] ns4-u8o2 Move firmware-derived files to runtime loading (**Class B code images & `native_bass_*.rs` first**, then Class C tables)
 - [ ] ns4-eh57 Second history rewrite after the firmware migrations
-- [ ] ns4-80xe Trade dress review of the panel look
+- [ ] ns4-80xe Proactive trade dress mitigation: neutral non-red default panel theme
+- [ ] ns4-pvb3 Permissive VST3 binding: DAW host checks
+
+Deferred / Optional (only if commercializing or contacted by a rights holder):
+- [ ] ns4-4qmh Additional permission for musicians (shipped in D241; counsel review deferred)
+- [ ] ns4-0s8y Trademark policy for ND Matrix 1 (shipped in D241; paid registration deferred)
+- [ ] ns4-ns2j Counsel review of docs/LEGAL.md open questions (deferred under $0 budget)
 
 ## Out of Scope
 Product features unrelated to legal risk.

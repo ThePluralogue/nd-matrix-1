@@ -104,10 +104,10 @@ def derived_reason(path: str) -> str | None:
         return "name matches fw_*_tables.rs"
     if (
         in_crates
-        and fnmatch.fnmatch(name, "prog_*.rs")
+        and (fnmatch.fnmatch(name, "prog_*.rs") or fnmatch.fnmatch(name, "native_*.rs"))
         and any(part.endswith("_fw") for part in p.parts[:-1])
     ):
-        return "prog_*.rs under *_fw/"
+        return "prog_*.rs or native_*.rs under *_fw/"
     if in_crates or path.startswith("docs/research/data/"):
         for needle in ("fw-image", "-tables.", "p-words"):
             if needle in name:

@@ -3,14 +3,14 @@
 title: 'Trademark policy for the ND Matrix 1 name'
 status: in-progress
 type: task
-priority: normal
+priority: low
 created_at: 2026-11-23T16:00:00Z
-updated_at: 2026-11-23T16:00:00Z
+updated_at: 2026-11-23T21:25:00Z
 parent: ns4-9wq1
 ---
 
 ## Context
-The license covers code, not names. A fork could ship under "ND Matrix 1". Nord and Clavia names are used only descriptively (D16, docs/specs/visual-style-and-panel.md section 10).
+The license covers code, not names. A fork could ship under "ND Matrix 1". Nord and Clavia names are used only descriptively (D16, docs/specs/visual-style-and-panel.md section 10). Under the $0 legal budget, paid trademark registration is deferred; `TRADEMARKS.md` applies without registration.
 
 ## Higher Goal
 Forks must rename; the project name stays tied to this project.
