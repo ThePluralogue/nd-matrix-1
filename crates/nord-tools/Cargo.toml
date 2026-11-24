@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 nord-core = { path = "../nord-core" }
+nord-sharc = { path = "../nord-sharc" }
 nord-arm = { path = "../nord-arm" }
 serde_json = "1.0"
 
