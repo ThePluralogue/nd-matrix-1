@@ -113,11 +113,11 @@ fn k{id}(core: &mut Core) {{ core.aot_pe_both(ComputeOp::{c:?}, Kern::{kern}); }
                     let _ = writeln!(out, "}}");
                     let _ = writeln!(
                         body,
-                        "    {{ let mut pe = Pe::load(core, false).with_kern(Kern::{kern}); b{bi}_{ii}(&mut pe); pe.store(core); }}"
+                        "    {{ let mut pe = Pe::load(core, false).with_kern(Kern::{kern}); b{bi}_{ii}(&mut pe); let st = pe.sticky(); core.aot_pe_end(false, st); }}"
                     );
                     let _ = writeln!(
                         body,
-                        "    if simd {{ let mut pe = Pe::load(core, true).with_kern(Kern::{kern}); b{bi}_{ii}(&mut pe); pe.store(core); }}"
+                        "    if simd {{ let mut pe = Pe::load(core, true).with_kern(Kern::{kern}); b{bi}_{ii}(&mut pe); let st = pe.sticky(); core.aot_pe_end(true, st); }}"
                     );
                     let _ = writeln!(body, "    core.steps += {};", ops.len());
                 }

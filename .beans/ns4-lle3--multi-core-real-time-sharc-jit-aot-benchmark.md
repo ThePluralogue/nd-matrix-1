@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-11-23T21:40:00Z
-updated_at: 2026-11-23T22:30:00Z
+updated_at: 2026-11-24T21:30:00Z
 parent: ns4-lle1
 ---
 
@@ -33,8 +33,10 @@ Full ARM0 integration (`ns4-lle5`); SPORT audio routing (`ns4-lle4`).
 - Result: ORG Core2 AOT 1:1 with the interpreter over 1 854 395 steps; x1.34 per pass; 8.0x over the 46.08 us budget. Verdict NO-GO for real time, see `docs/research/sharc-lle-realtime.md`.
 - Follow-up in the same PR: `core/aot_prof.rs` profile (`lle_sharc_bench --profile`), compute fields of lowered transfers on generated `Pe` kernels (one per distinct op, exact/approx by generation-time tier), gap analysis table and curve in the research note. A block-splitting variant (v3) verified 1:1 but was slower and was reverted.
 
+- Bounded speed experiment (D247, `docs/research/sharc-lle-realtime.md` "Bounded redesign experiment"): blocks end at guard-changing instructions (bails 29 to 0 per pass), one shared handler per transfer shape (module code ~2.5 MB to ~0.4 MB), compute in place on the core registers (`Pe<'a>`). ORG Core2 x7.2 to x4.6 of the 46.08 us budget (fast-f32 x4.0), 1:1 with the interpreter over 1 854 395 steps. Stopped at the x3.5 checkpoint: x2 is not reachable in exact mode with this design. PNO Core2 (interpreter) is now the slowest measured core at x6.7; PNO Core1 x1.5. Acceptance criteria 2 and 3 stay unticked (cores still missing, no core under budget).
+
 ## Left to do (status stays in-progress)
 
 - Presets/jobs for ORG Core1 (P4I start, own idle pc), FX Core1/Core2 (`FX1`/`FX2` consts exist; add presets + `FxPeer` tick hook), SY1SY2/SMP (ISR job kind in `pass_sched`): see "Missing cores" in `docs/research/sharc-lle-realtime.md`.
 - Fast-vs-Exact error in dB on a real pass for the current module build.
-- Follow-up lowering lines the profile shows (per-site folded code, registers in locals, cheaper compute) only if a redesign is wanted; two rounds moved ORG Core2 from x8.0 to x7.0 of budget, so the verdict stays no-go.
+- AOT module for PNO Core2 (its own `--aot-pcs` run), `Pe` support for the 842 compute ops per pass that still use `exec_compute_op`; the verdict stays no-go for real time in exact mode.

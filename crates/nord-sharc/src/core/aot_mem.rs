@@ -262,6 +262,7 @@ impl MemXfer {
 
     /// Rust expression of this constant for the generated module (`MemXfer`, `Addr`, `Data`,
     /// `ComputeOp` in scope).
+    #[cfg(test)]
     pub(super) fn to_rust(self) -> String {
         self.to_rust_with(None)
     }
@@ -385,11 +386,13 @@ impl Core {
         let simd = self.simd();
         let mut pe = Pe::load(self, false).with_kern(kern);
         pe.exec(cop);
-        pe.store(self);
+        let st = pe.sticky();
+        self.aot_pe_end(false, st);
         if simd {
             let mut pe = Pe::load(self, true).with_kern(kern);
             pe.exec(cop);
-            pe.store(self);
+            let st = pe.sticky();
+            self.aot_pe_end(true, st);
         }
     }
 

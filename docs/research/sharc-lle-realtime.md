@@ -1,12 +1,14 @@
 # Whole-Pass AOT and multi-core SHARC pass benchmark at 48 kHz: verdict NO-GO
 
-Checked: 2026-11-24
+Checked: 2026-11-24 (bounded experiment: same day)
 Sources: ORG/PNO Core1/Core2 SRAM images (local-only, `target/sram/{ORG,PNO,FX}/`, produced from `.reference/` as in `org-system-run.md`); ORG Core2 messages `docs/research/data/org-system-load-core2.script` flattened to pass 0 plus `--msg 0:0x3e021=1`; `crates/nord-sharc/src/core/{aot_whole,aot_mem,aot_emit,aot_lower,aot_hot,aot_glue}.rs`, `runner/pass_sched.rs`, `sharc-aot --whole-pass`, `sharc_jit_diff --aot-pcs/--aot-top/--bench`, `crates/nord-tools/src/bin/lle_sharc_bench.rs`; baselines `sharc-aot-multi-block.md` (PR #466 / D118), `pno-jit-arm-profile.md`; bean `ns4-lle3`.
 Question: can Whole-Pass AOT (`sharc-aot` generates Rust, `rustc -O` compiles it into the binary) with native lowering of memory, SIMD, register-move and shift instructions, run on a 1-thread-per-core spin-barrier scheduler, execute every SHARC core of the Nord Stage 4 inside the real-time budget of 46.08 us per pass (2 frames at 43 402.34 Hz, ASSUMED in `org-system-run.md`)?
 
 ## Result in one paragraph
 
 **NO-GO on this prototype.** The whole-pass AOT is bit-exact (ORG Core2: 57 blocks, boot 100 000 steps + 300 passes = 1 854 395 steps matched 1:1, full state and SRAM compared every 20 000 steps) and faster than the interpreter, but only by x1.3 to x1.4 per pass. The slowest measured core (ORG Core2, 6 280 steps per pass) needs **~370 us per pass with AOT, 8.0x the budget** (repeat runs 8.0 to 9.8x; the interpreter needs 12 to 13x). PNO Core2 (4 266 steps) needs 7.2 to 7.9x on the interpreter. Real time needs 6 280 steps / 46.08 us = **136 Msteps/s per core**; the AOT delivers 10 to 17 Msteps/s. The fast-f32 mode is no faster than exact mode (explained below). Closing the gap needs roughly a further 8x on the hottest core, which the structure of the current lowering cannot reach without the changes under "What would close it". A follow-up gap analysis and two more lowering rounds (section "Gap analysis and lowering rounds") moved the best ORG Core2 case only from x8.0 to x7.0; the curve flattens far above x2.
+
+**Bounded redesign experiment (section "Bounded redesign experiment", later the same day): ORG Core2 x7.2 to x4.6 of the budget (fast-f32 x4.0), still bit-exact; stopped at the pre-set checkpoint (x3.5) because it was not reached and the remaining steps do not reach x2 in exact mode.** PNO Core2 (interpreter, no AOT module built for it) is now the slowest benchmarked core at x6.7.
 
 ## 1. Whole-Pass AOT prototype
 
@@ -127,11 +129,63 @@ Measured (3 cores together, exact mode, v1 AOT build): PNO Core1 74 us, PNO Core
 
 With every host from 4 cores up the slowest core, not the core count, decides: real time needs it ~7.6x faster even with unlimited cores. Only PNO Core1 (x1.6 measured) is within reach of one core of real time.
 
+## Bounded redesign experiment (ns4-lle3 follow-up 2)
+
+Question: can ORG Core2 get from x7.0 to at most x2 over budget, bit-exact in exact mode, by (1) per-site folded code, (2) the register file in locals, (3) native control flow and (4) less per-step bookkeeping? Checkpoint set beforehand: after the first two steps the best core must be at least x2 faster than the AOT before (about x3.5), else stop.
+
+Method. Host: AMD Ryzen 9 5900XT (16 cores, 512 KB L2 per core, 32 MB L3 per CCD), Windows 11, other sessions building and running at the same time, so a single run varies by +-15% and more. All "min" figures are the minimum mean of 10 runs of `lle_sharc_bench --engine aot` on ORG Core2 (300 passes, 16 warm-up, 912 ARM messages), binaries kept per step and run alternately. Every step was verified `AOT DIFF OK ... 1854395 steps matched 1:1` (boot 100 000 steps + 300 passes, state and SRAM every 20 000 steps) and the unit tests (`cargo test -p nord-sharc --lib`). Tags: EMPIRICAL for every timing.
+
+### What the profile showed first
+
+| Finding | Evidence |
+|---|---|
+| The 29 bail-outs per pass were not delay slots. Two big blocks (`0x1273c9`, 676 steps, and `0x127cda`, 958 steps) left the native path at step 51 and 824: a `BIT SET IRPTL` (software interrupt) and a mode write, which `aot_sig` correctly treats as guarded state. They put ~760 steps per pass (12%) on the interpreter. | temporary print of block, step, pc and guard fields on the 300-pass diff (12 300 bails); `T18a` word `1402 0020 0000` at `0x127434` |
+| An interpreter step and an AOT step cost about the same at that point (~100 cycles), so removing the bail-outs did not move the time (best of 6: 299 us before and after). | step 0 below |
+| The generated module was 512 k x86 instructions (~2.5 MB) for 3 637 transfer sites. A pass runs each site once, so it fetches ~2.2 MB of code against 512 KB of L2. | `rustc --emit asm` instruction count of the module; exe size 4.94 MB with the module, 2.44 MB after step 1 |
+| Of the ~123 cycles per compute op on the generated `Pe` kernel, about half was copying the ~170-byte element state in and out of `Pe`. | micro-benchmark: `aot_pe_both` (both elements) 84 ns, `Pe::exec` alone 13 ns per element |
+
+### Steps and measurements
+
+| Step | Change | Min mean us | x budget | `--bench` speedup vs interpreter |
+|---|---|---:|---:|---:|
+| Before (PR #660 build) | whole-pass AOT as merged | 333.5 | 7.24 | x1.27 to x1.36 |
+| 0. Fewer bail-outs (commit `perf(sharc): AOT blocks end at guard-changing instructions`) | a system register write or bit operation ends its block (273 blocks); a store re-checks the guard only after an access outside the SRAM (`Core::aot_slow`); a delayed flow keeps its delay slots in the block. Bails 29 to 0 per pass, interpreted mid-block steps 876 to 256 | ~300 (best of 6, not A/B'd in the same minute) | ~6.5 | x1.32 |
+| 1. One handler per transfer shape (commit `perf(sharc): AOT generated code shares one out-of-line handler`) | `hN(core, pc, imm)`: 3 637 sites in 404 handlers; module code ~2.5 MB to ~0.4 MB; build 87 s to 53 s | 251.5 | 5.46 | x1.69 |
+| 2. In-place compute (`Pe<'a>` borrows the registers, flags and ASTAT bits of the core instead of copying them) | kernel 123 to 74 cycles per op | 210.9 | 4.58 | x2.05 |
+| 2, fast-f32 module (`ORG2F`) | same code, approximate kernels | 184.4 | 4.00 | |
+
+Per core, final build, three cores concurrently (4 runs, mean us, x of 46.08 us): PNO Core1 interpreter 68.5 to 70.1 (x1.49 to x1.52); PNO Core2 interpreter 307 to 352 (x6.67 to x7.65); ORG Core2 AOT 214 to 221 (x4.65 to x4.79); tick (slowest core plus barrier) 311 to 355 us; total CPU per pass 592 to 642 us = 12.8 to 13.9 budget periods. ORG Core2: 6 280 steps in 211 us = 29.8 Msteps/s (18.9 at 333 us); real time needs 136 Msteps/s.
+
+### Why steps 1 and 2 were built this way and registers in locals were not
+
+- The brief named "per-site folded code". The measurement says the opposite layout wins: a pass runs each site once, so per-site inlined code pays instruction fetch and decode for every step, and the merged prototype lost more to code size than folding constants gained. Sharing one handler per shape (immediate as argument) keeps the folded body but fetches it once per shape.
+- "Registers in locals" needs a straight-line function that holds the register file across many sites. With shared out-of-line handlers every call is a boundary, so the state lives in memory (the core or a stack struct) anyway, and the layout that could keep registers in machine registers is the large inlined one that lost. The part of the idea that did pay is the element copy per compute op, removed by working in place (step 2). A full locals design was therefore not built.
+- Native `DO`, `CALL` and `RTS` were not built: after step 0 no block bails (0 per pass) and the interpreter-run steps are 4.1% of the steps; the remaining flow cost is in dispatch (4.0%) and loop glue (5.8%).
+
+### Where the time goes now (ORG Core2, exact, `--profile` of the final build; shares of pass time, the profile adds overhead)
+
+| Cause | Steps or ops per pass | Share | Note |
+|---|---:|---:|---|
+| Compute fields on generated `Pe` kernels | 2 147 ops | 17.1% | 74 cycles per op (was 123): the exact 40-bit arithmetic, 13 ns per element in the micro-benchmark |
+| Compute fields through `exec_compute_op` | 842 ops | 13.2% | 146 cycles per op: op families `Pe` does not model (shifter, fixed multiplier, other float ops) |
+| Lowered transfers without compute | ~4 000 steps | ~35% | transfer handlers, DAG and SRAM access, glue (remainder of the native share) |
+| Generic `aot_step` inside blocks | 480 | 9.8% | `Move:Other(4b)` 3.0%, `DirectMem` 2.7%, conditional compute |
+| Rest of a block run by the interpreter after a refused entry | 256 | 8.5% | entry refused: hardware loop end inside a block (24 per pass), interrupt event due inside a block (14) |
+| Loop glue and idle check | | 5.8% | |
+| Block entry and exit | 273 blocks | 4.0% | search, guard, code check |
+
+### Checkpoint and verdict
+
+After the first two steps ORG Core2 is at x4.58, above the x3.5 line, and each step bought less: -25% (shared handlers), -16% (in-place compute), 0% (bail-outs). The compute floor alone is about 2 989 ops x 2 elements x 13 ns = 78 us (x1.7) when the pass runs in SIMD, before any transfer, flow or dispatch work, and every other row above is 4 to 35% of the pass. Even with every fallback row cut to a quarter and compute at the micro-benchmark speed, the pass would stay near x3 in exact mode. **x2 over budget is not reachable in exact mode with this design; stopped as the checkpoint prescribes.** The hybrid verdict (HLE for live play, LLE for oracle and offline work, ROADMAP Gate 1b) is unchanged: ORG Core2 moved from x7.2 to x4.6, but it is still 4.6 times too slow on its own core, and PNO Core2 (x6.7 on the interpreter) would need the same AOT module before it benefits.
+
+What would still change the picture (not done here): fast-f32 as the live tier needs a listening or null test and a cheaper non-compute path (it is x4.0 now); an AOT module for PNO Core2 (its `--aot-pcs` run is not part of this change); modelling the 842 ops per pass that still run on `exec_compute_op` in `Pe` (about -9% by the table above).
+
+
 ## Alternatives (what to do instead)
 
 - **HLE hybrid** (recommended by the numbers): run LLE only for cores that fit the budget and keep the Rust HLE engines for the rest. On these measurements only PNO Core1 (x1.6 over, closest) could ever fit; ORG/PNO Core2 are x7 to x8 over.
 - **Slower-than-real-time LLE** for non-live uses: preset rendering and null tests of the HLE engines against the firmware.
-- **Bounded redesign experiment** (per-site folded code, registers in locals per block, native flows) only if someone wants to find out whether x2 is reachable; this prototype's curve does not show it.
+- **Bounded redesign experiment** (done, section above): shared handlers, in-place compute and fewer bail-outs took ORG Core2 from x7.2 to x4.6 and stopped at the checkpoint; x2 is not reachable in exact mode with this design.
 
 ## Implications
 
@@ -142,7 +196,7 @@ With every host from 4 cores up the slowest core, not the core count, decides: r
 ## Follow-ups
 
 - Presets and message scripts for ORG Core1 and FX Core1/Core2; SY1SY2/SMP as ISR-driven jobs in `pass_sched`, so the 300-pass benchmark covers all five chips.
-- Bounded experiment on items 1 to 3 with an x4 checkpoint (only if the redesign in the gap analysis is wanted).
+- AOT module for PNO Core2 (needs its own `--aot-pcs` run), then re-measure the 3-core tick; `Pe` support for the 842 ops per pass that still use `exec_compute_op`.
 - Fast-vs-Exact error in dB on a real pass for the current module build (`sharc_jit_diff --aot-audio` with the approximate module compiled first).
 - Listening/null test for the fast-f32 tier, only if the compute share of the pass becomes native.
 
@@ -150,6 +204,8 @@ With every host from 4 cores up the slowest core, not the core count, decides: r
 
 ```bash
 # images and message scripts: see org-system-run.md (local-only)
+# per-step rounds: regenerate the modules, rebuild, run the 1:1 diff and the benchmark, then take the minimum mean of 10
+# `lle_sharc_bench --engine aot --core ORGc2=...,ORG2` runs per binary, alternating binaries
 cargo run --release -p nord-sharc --bin sharc_jit_diff -- IMG ARGS --aot-pcs target/lle/org2.pcs
 cargo run --release -p nord-sharc --bin sharc-aot -- IMG --whole-pass target/lle/org2.pcs --force 0x125DDF --tier pe --out target/lle/org2_whole.rs
 export NORD_SHARC_AOT_HOT="ORG2=$PWD/target/lle/org2_whole.rs;ORG2F=$PWD/target/lle/org2_whole_approx.rs"
