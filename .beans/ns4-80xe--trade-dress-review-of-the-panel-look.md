@@ -17,6 +17,7 @@ The default GUI look and all public screenshots have a distinct, non-red ND Matr
 
 ## Acceptance Criteria
 - [ ] Design and bake a neutral, non-red default chassis theme (e.g., dark charcoal/slate/navy) with clear ND Matrix 1 branding
+- [ ] Owner request 2026-11-23: change colors, images and other visual elements (knob and button shapes, key colors, section accents, typography, plate texture) so the GUI looks clearly different from the original Nord panel, not only a recolor of the chassis
 - [ ] Make the neutral theme the default in `nord-gui` and `nord-plugin`
 - [ ] Refresh README and release screenshots (`docs/img/gui/`) to show the neutral default theme
 - [ ] Decision recorded in `docs/DECISIONS.md` and `docs/specs/visual-style-and-panel.md`
