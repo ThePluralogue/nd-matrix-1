@@ -15,7 +15,6 @@ pub mod library;
 pub mod os_update_panel;
 pub mod panel;
 pub mod screenshot;
-pub mod sponsor;
 pub mod style;
 pub mod telemetry;
 pub mod widgets;

@@ -5,13 +5,11 @@ use crate::render_opts_wave::WAVE_TABLES_ENV;
 use crate::user_config;
 use std::path::{Path, PathBuf};
 
-/// Official download links of the current OS (v1.66). VERIFIED: both answered `302` to a HEAD
-/// request on 2026-11-12, `tools/nord_os_urls.py` (the document id is only valid with this name).
-pub const DOWNLOAD_WINDOWS: &str =
-    "https://www.nordkeyboards.com/wt/documents/1042/Update%20Nord%20Stage%204%20OS%20v1.66.zip";
-/// Mac disk image of the same release (see [`DOWNLOAD_WINDOWS`]).
-pub const DOWNLOAD_MAC: &str =
-    "https://www.nordkeyboards.com/wt/documents/1041/Update%20Nord%20Stage%204%20OS%20v1.66.dmg";
+/// The vendor's Nord Stage 4 Downloads page, where the user picks the OS update for their platform
+/// (Windows `.zip`, Mac `.dmg`). We link the page, not a file, so the user downloads from the
+/// vendor themselves (`docs/LEGAL.md` section 2). VERIFIED: the page loaded and listed the v1.66
+/// Windows and Mac updates on 2026-11-24, checked by hand in a browser (no download).
+pub const DOWNLOADS_PAGE: &str = "https://www.nordkeyboards.com/products/nord-stage-4/downloads";
 /// Shown when no update file is set.
 pub const PLACEHOLDER_NOTE: &str =
     "No Nord OS update file set: the built-in placeholder wavetable is used for WAVE sounds.";
@@ -88,7 +86,7 @@ pub fn describe(s: &Status) -> String {
             )
         });
         return format!(
-            "{broken}{PLACEHOLDER_NOTE}\nGet the official update: {DOWNLOAD_WINDOWS}\n(Mac: {DOWNLOAD_MAC})\nThen run: ns4 firmware set \"<downloaded file>\""
+            "{broken}{PLACEHOLDER_NOTE}\nGet the official update (Windows .zip or Mac .dmg) from the Nord Stage 4 Downloads page: {DOWNLOADS_PAGE}\nThen run: ns4 firmware set \"<downloaded file>\""
         );
     };
     let from = match src {
@@ -165,7 +163,22 @@ mod tests {
         );
         let t = describe(&s);
         assert!(t.contains("placeholder"), "{t}");
-        assert!(t.contains("nordkeyboards.com/wt/documents/1042"), "{t}");
+        assert!(t.contains(DOWNLOADS_PAGE), "{t}");
+        assert!(!t.contains("/wt/documents/"), "{t}");
+    }
+
+    #[test]
+    fn the_download_link_is_the_downloads_page_not_a_file() {
+        assert_eq!(
+            DOWNLOADS_PAGE,
+            "https://www.nordkeyboards.com/products/nord-stage-4/downloads"
+        );
+        for deep in ["/wt/documents/", ".zip", ".dmg", ".exe"] {
+            assert!(
+                !DOWNLOADS_PAGE.contains(deep),
+                "{DOWNLOADS_PAGE} has {deep}"
+            );
+        }
     }
 
     #[test]

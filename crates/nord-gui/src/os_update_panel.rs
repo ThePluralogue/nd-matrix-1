@@ -116,14 +116,10 @@ impl OsUpdatePanel {
 
     fn window_body(&mut self, ui: &mut egui::Ui) {
         ui.label("The WAVE sounds need the wavetables from your own Nord OS update.");
-        ui.label("1. Download the official update (Windows .zip/.exe or Mac .dmg):");
+        ui.label("1. Download the official update (Windows .zip/.exe or Mac .dmg) from Nord:");
         ui.hyperlink_to(
-            "Windows: Nord Stage 4 OS update",
-            firmware_setting::DOWNLOAD_WINDOWS,
-        );
-        ui.hyperlink_to(
-            "Mac: Nord Stage 4 OS update",
-            firmware_setting::DOWNLOAD_MAC,
+            "Nord Stage 4 Downloads page",
+            firmware_setting::DOWNLOADS_PAGE,
         );
         ui.label("2. Drop the downloaded file onto this window, click Browse, or paste its path:");
         ui.add_space(4.0);
