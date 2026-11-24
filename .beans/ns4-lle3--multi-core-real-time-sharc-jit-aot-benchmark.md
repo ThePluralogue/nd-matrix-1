@@ -1,0 +1,26 @@
+---
+# ns4-lle3
+title: 'Multi-core real-time SHARC JIT/AOT benchmark at 48 kHz'
+status: todo
+type: task
+priority: high
+created_at: 2026-11-23T21:40:00Z
+updated_at: 2026-11-23T21:40:00Z
+parent: ns4-lle1
+---
+
+## Context
+`crates/nord-sharc` already has a Cranelift JIT that matches the interpreter 316/316 passes on PNO core 1 (`sharc-sys --jit-diff --strict`, improved by PR #460 `ns4-z2fq` loop SSA promotion) and a 1-thread-per-core `MultiCoreScheduler` (PR #461 `ns4-spj2`). However, PR #466 (`D118`) and `docs/research/sharc-aot-multi-block.md` showed that basic-block JIT/AOT still leaves ~56.7% of steps in `Core::step()` fallback (~11–16 Msteps/s vs ~93–129 Msteps/s needed for `46.08 us/pass`). Real-time 48 kHz execution across all active SHARC cores (`ORG c1/c2`, `PNO c1/c2`, `FX c1/c2`, `SY1SY2`, `SMP`) therefore requires evaluating **Whole-Pass AOT (`sharc-aot` → `rustc -O`)** with native lowering of `DirectMem`/`DagMem`/SIMD/`RegMove`/`RegSwap`/`ShiftImm`/`Multifunction` paired with a lock-free spin-barrier multi-core pass scheduler.
+
+## Higher Goal
+Establish a hard go/no-go real-time CPU budget for running all SHARC cores concurrently at 48 kHz using Whole-Pass AOT (or lowered JIT) and a lock-free multi-core pass scheduler.
+
+## Acceptance Criteria
+- [ ] Prototype **Whole-Pass AOT** (`sharc-aot` → `rustc -O`) with native lowering for `DirectMem`/`DagMem`, `SIMD`, `Move(Other/RegSwap)`, `ShiftImm`, and `Multifunction`, verified 1:1 against the interpreter on a real pass (absorbing PR #466 `D118` milestones)
+- [ ] Run a 300-pass warmed-up multi-core benchmark across `PNO`, `ORG`, `FX`, `SY1SY2`, and `SMP` on the lock-free 1-thread-per-core `MultiCoreScheduler` (PR #461 `ns4-spj2`, spin-barrier pass sync)
+- [ ] Measure per-core pass latency (target `< 46.08 us/pass` or within 128/256/512-frame 48 kHz buffers), p99 jitter, and total CPU usage in both exact-40-bit and fast-`f32` modes
+- [ ] Record measurements, risks (compile time, dynamic SRAM code invalidation, computed jumps), and go/no-go verdict in `docs/research/`
+- [ ] Unit tests verifying Whole-Pass AOT lowering and the multi-core benchmark harness on synthetic SHARC programs
+
+## Out of Scope
+Full ARM0 integration (`ns4-lle5`); SPORT audio routing (`ns4-lle4`).
