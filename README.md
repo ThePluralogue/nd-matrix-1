@@ -45,7 +45,7 @@ Read the full specification suite in [`docs/`](docs/README.md):
 
 **Playing the GUI:** `nd-matrix-1` plays from a MIDI keyboard (first MIDI port, velocity passed through unchanged), the mouse (velocity 88) or the computer keyboard (`A S D F G H J K L ; '` white keys, `W E T Y U O P` black keys, `Z` / `X` octave, `C` / `V` velocity, `Space` sustain; see [GUI testing](docs/gui-testing.md)). **Small text?** Zoom the panel with `1`-`5` (a section), `0` / `Esc` (whole panel), `+` / `-` or the bar pills; all commands are in [Commands and zoom](docs/guides/commands.md) and on the `? HELP` screen.
 
-Tagged releases ship `ns4` (CLI), `nd-matrix-1` (GUI), `nord-plugin-standalone`, and the CLAP + VST3 DAW plugins in multiple formats (all with `.sha256` checksums):
+Tagged releases ship `ns4` (CLI), `nd-matrix-1` (GUI), `nd-matrix-1-standalone`, and the CLAP + VST3 DAW plugins in multiple formats (all with `.sha256` checksums):
 - **Windows (x86_64):** `-setup.exe` installer (with selectable GUI, CLI, VST3 & CLAP components) and portable `.zip`
 - **macOS (arm64):** `.pkg` installer (selectable app, VST3 & CLAP), `.dmg` disk image, and portable `.tar.gz`
 - **Linux (x86_64):** `.deb` package, portable `.AppImage` (run with `--install-plugins` to copy CLAP/VST3 to `~/.clap` and `~/.vst3`), and `.tar.gz`
