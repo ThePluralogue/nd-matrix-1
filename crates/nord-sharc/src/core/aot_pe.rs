@@ -18,8 +18,10 @@ use super::aot_native::{
     approx_add, approx_from_int, approx_mul, guarded_add, guarded_from_int, guarded_mul, Kern,
 };
 use super::decode_cache::ComputeOp;
-use super::float::{Mode, Out, MODE1_ALUSAT};
+use super::float::{self, Mode, Out, MODE1_ALUSAT};
+use super::float_conv as conv;
 use super::float_misc as misc;
+use super::shifter_bits;
 use super::types::Flags;
 use super::Core;
 use crate::visa::bits;
@@ -55,8 +57,23 @@ pub(super) struct Pe<'a> {
 pub(super) fn pe_supports(op: ComputeOp) -> bool {
     match op {
         ComputeOp::Nop | ComputeOp::FloatMul { .. } => true,
+        ComputeOp::Shifter { op, .. } => pe_supports_shift(u64::from(op)),
         ComputeOp::FloatAlu { op, .. } => {
-            matches!(op, 0x81 | 0x82 | 0xDA | 0xE0..=0xE3 | 0xA2 | 0xC4)
+            matches!(
+                op,
+                0x81 | 0x82
+                    | 0x89
+                    | 0x8A
+                    | 0xA1
+                    | 0xA2
+                    | 0xB0
+                    | 0xC4
+                    | 0xC5
+                    | 0xC9
+                    | 0xD9
+                    | 0xDA
+                    | 0xE0..=0xE3
+            )
         }
         ComputeOp::FixedAlu { op, .. } => {
             matches!(op, 0x01 | 0x02 | 0x0A | 0x21 | 0x22 | 0x29 | 0x40..=0x42 | 0x61..=0x63)
@@ -68,7 +85,23 @@ pub(super) fn pe_supports(op: ComputeOp) -> bool {
 
 /// Whether [`Pe::shift`] implements the register-form shifter opcode `op`.
 pub(super) fn pe_supports_shift(op: u64) -> bool {
-    matches!(op, 0xC0 | 0xC4 | 0xC8)
+    matches!(
+        op,
+        0x00 | 0x04
+            | 0x08
+            | 0x20
+            | 0x24
+            | 0x40
+            | 0x44
+            | 0x48
+            | 0x4C
+            | 0x64
+            | 0x6C
+            | 0xC0
+            | 0xC4
+            | 0xC8
+            | 0xCC
+    )
 }
 
 /// `(rm, xm, ym, alu opcode, ra, xa, ya)` of a float multiplier + float ALU multifunction word.
@@ -77,9 +110,6 @@ fn float_multi(c: u64) -> Option<(u8, u8, u8, u8, u8, u8, u8)> {
         return None;
     }
     let alu = FLOAT_ALU_OPS[bits(c, 18, 16) as usize];
-    if !matches!(alu, 0x81 | 0x82 | 0xDA | 0xE0..=0xE3) {
-        return None;
-    }
     Some((
         bits(c, 15, 12) as u8,
         bits(c, 7, 6) as u8,
@@ -295,6 +325,34 @@ impl<'a> Pe<'a> {
         let o = match op {
             0x81 => self.k_add(self.f40(x), self.f40(y), false),
             0x82 => self.k_add(self.f40(x), self.f40(y), true),
+            0x89 => float::add(self.f40(x), self.f40(y), false, true, self.mode),
+            0x8A => {
+                // compare: CACC shifts in `Fx > Fy`, no result register
+                let (a, b) = (self.f40(x), self.f40(y));
+                let cacc =
+                    (*self.astat >> 24 >> 1) | u32::from(misc::greater(a, b, self.mode)) << 7;
+                *self.astat = *self.astat & 0x00FF_FFFF | cacc << 24;
+                self.apply(misc::compare(a, b, self.mode));
+                (*self.astat) |= AF;
+                return;
+            }
+            0xA1 => misc::sign_op(self.f40(x), 0, self.mode),
+            0xB0 => misc::sign_op(self.f40(x), 2, self.mode),
+            0xC9 | 0xD9 => {
+                let iy = if op == 0xD9 {
+                    self.r[usize::from(y)] as i32
+                } else {
+                    0
+                };
+                let o = conv::to_int(self.f40(x), iy, false, self.mode);
+                let n = usize::from(n);
+                self.r[n] = o.v as u32;
+                self.lo[n] = 0;
+                self.apply(o);
+                (*self.astat) |= AF;
+                return;
+            }
+            0xC5 => misc::rsqrts(self.f40(x), self.mode),
             0xDA => self.k_from_int(self.r[usize::from(x)] as i32, self.r[usize::from(y)] as i32),
             0xE0..=0xE3 => misc::select_op(self.f40(x), self.f40(y), op & 3, self.mode),
             0xA2 => misc::sign_op(self.f40(x), 1, self.mode),
@@ -318,6 +376,10 @@ impl<'a> Pe<'a> {
                 let (rx, ry) = (self.r[usize::from(x)], self.r[usize::from(y)]);
                 self.fixed_alu(op, n, rx, ry);
                 (*self.astat) &= !AF;
+            }
+            ComputeOp::Shifter { op, n, x, y } => {
+                let ry = self.r[usize::from(y)];
+                self.shift(u64::from(op), n, x, ry);
             }
             ComputeOp::Multifunction { c } => {
                 if let Some((rm, xm, ym, alu, ra, xa, ya)) = float_multi(c) {
@@ -381,15 +443,54 @@ impl<'a> Pe<'a> {
     #[inline(always)]
     pub(super) fn shift(&mut self, op: u64, n: u8, x: u8, ry: u32) {
         let rx = self.r[usize::from(x)];
+        let old = self.r[usize::from(n)];
+        let (len, pos) = ((ry >> 6) & 63, ry & 63);
         let bit = ry as i32;
         let bit_ok = (0..32).contains(&bit);
-        let r = match (bit_ok, op) {
-            (false, _) => rx,
-            (true, 0xC0) => rx | (1 << bit),
-            (true, 0xC4) => rx & !(1 << bit),
-            (true, _) => rx ^ (1 << bit),
+        let r = match op {
+            0x00 | 0x20 | 0x04 | 0x24 => {
+                let arith = op & 4 != 0;
+                let r = shifter_bits::shift(rx, bit, arith) | if op & 0x20 != 0 { old } else { 0 };
+                let sv = bit > 0
+                    && (!arith
+                        || shifter_bits::shift(rx, bit, true) as i32 >> ry.min(31) != rx as i32
+                        || (ry >= 32 && (rx != 0 || op & 0x20 != 0)));
+                (self.f.sz, self.f.sv, self.f.ss) = (r == 0, sv, false);
+                r
+            }
+            0x08 => {
+                let r = rx.rotate_left(bit.rem_euclid(32) as u32);
+                (self.f.sz, self.f.sv, self.f.ss) = (r == 0, false, false);
+                r
+            }
+            0xC0 | 0xC4 | 0xC8 => {
+                let r = match (bit_ok, op) {
+                    (false, _) => rx,
+                    (true, 0xC0) => rx | (1 << bit),
+                    (true, 0xC4) => rx & !(1 << bit),
+                    (true, _) => rx ^ (1 << bit),
+                };
+                (self.f.sz, self.f.sv, self.f.ss) = (r == 0, !bit_ok, false);
+                r
+            }
+            0xCC => {
+                let zero = !bit_ok || (rx >> bit) & 1 == 0;
+                (self.f.sz, self.f.sv, self.f.ss) = (zero, !bit_ok, false);
+                (*self.astat) &= !SHIFTER_CLEAR;
+                return;
+            }
+            0x44 | 0x4C | 0x64 | 0x6C => {
+                let (v, over) = shifter_bits::deposit(rx, len, pos, op & 8 != 0);
+                let r = v | if op & 0x20 != 0 { old } else { 0 };
+                (self.f.sz, self.f.sv, self.f.ss) = (r == 0, over, false);
+                r
+            }
+            _ => {
+                let (r, over) = shifter_bits::extract(rx, len, pos, op & 8 != 0);
+                (self.f.sz, self.f.sv, self.f.ss) = (r == 0, over, false);
+                r
+            }
         };
-        (self.f.sz, self.f.sv, self.f.ss) = (r == 0, !bit_ok, false);
         self.r[usize::from(n)] = r;
         (*self.astat) &= !SHIFTER_CLEAR;
     }
@@ -483,9 +584,21 @@ mod tests {
         let (n, x, y) = (r.reg() % 8, r.reg(), r.reg() + 4);
         let (n, x, y) = (n, x.min(15), y.min(15));
         let falu = |op| ComputeOp::FloatAlu { op, n, x, y };
-        let ops = [0x81, 0x82, 0xDA, 0xE0, 0xE1, 0xE2, 0xE3, 0xA2, 0xC4];
-        match r.next() % 12 {
-            0..=3 => LoweredOp::Compute(falu(ops[(r.next() % 9) as usize])),
+        let ops = [
+            0x81, 0x82, 0xDA, 0xE0, 0xE1, 0xE2, 0xE3, 0xA2, 0xC4, 0x89, 0x8A, 0xA1, 0xB0, 0xC5,
+            0xC9, 0xD9,
+        ];
+        match r.next() % 14 {
+            12 | 13 => LoweredOp::Compute(ComputeOp::Shifter {
+                op: [
+                    0x00, 0x04, 0x08, 0x20, 0x24, 0x40, 0x44, 0x48, 0x4C, 0x64, 0x6C, 0xC0, 0xC4,
+                    0xC8, 0xCC,
+                ][(r.next() % 15) as usize],
+                n,
+                x,
+                y,
+            }),
+            0..=3 => LoweredOp::Compute(falu(ops[(r.next() % 16) as usize])),
             4 | 5 => LoweredOp::Compute(ComputeOp::FloatMul { n, x, y }),
             6 => LoweredOp::Compute(ComputeOp::FixedAlu {
                 op: [
@@ -517,10 +630,17 @@ mod tests {
                 compute: (r.next() & 1 == 0).then(|| falu(0x82)),
             },
             _ => LoweredOp::Shift {
-                op: [0xC0, 0xC4, 0xC8][(r.next() % 3) as usize],
+                op: [
+                    0xC0, 0xC4, 0xC8, 0x00, 0x04, 0x08, 0x20, 0x24, 0x40, 0x44, 0x48, 0x4C, 0x64,
+                    0x6C, 0xCC,
+                ][(r.next() % 15) as usize],
                 n,
                 x,
-                ry: (r.next() % 40) as u32,
+                ry: if r.next() & 1 == 0 {
+                    (r.next() % 40) as u32
+                } else {
+                    r.next() as u32 >> (r.next() % 20)
+                },
             },
         }
     }
@@ -596,11 +716,11 @@ mod tests {
         assert!(float_multi(1 << 21).is_none(), "three-operation form");
         assert!(float_multi(1 << 22).is_none(), "register transfer");
         assert!(!pe_supports(ComputeOp::Shifter {
-            op: 0,
+            op: 0x80,
             n: 0,
             x: 0,
             y: 0
         }));
-        assert!(pe_supports_shift(0xC8) && !pe_supports_shift(0x00));
+        assert!(pe_supports_shift(0xC8) && pe_supports_shift(0x00) && !pe_supports_shift(0x80));
     }
 }
