@@ -13,7 +13,7 @@ Tags follow `.agents/rules/provenance-in-code.md`. Cycle figures use ~4.5 GHz (R
 | Budget: 46.08 us = ~207 k cycles per pass = 33 cycles per step at 6 280 steps; x2 = 66 cycles per step | arithmetic | every stage gets a cycles-per-step line below |
 | A pass runs every generated site once; module code fetched per pass matters (2.5 MB inlined lost to 0.4 MB shared: x7.2 to x5.5) | experiment, step 1 | native locals must not be paid for with big inlined code; code bytes per step is a first-class budget (target <= 24 bytes per step average) |
 | Copying element state per compute op was half the op cost (123 to 74 cycles) | step 2 | state must stay in place, never be copied per op |
-| Exact 40-bit float op: ~13 ns per element (~58 cycles) in the best case; ~3 000 ops per pass in SIMD is x1.7 alone | micro-benchmark | exact mode cannot reach x2 unless the arithmetic gets cheaper (see 6); Fast mode is the same IR with an f32 kernel |
+| Exact 40-bit float op: ~13 ns per element (~58 cycles) in the micro-benchmark; stage B measured 59 cycles per both-element op, 2 831 ops per pass = about 37 us (x0.8) | micro-benchmark, stage B | compute is about 25% of the pass; the rest of the pass sets the limit (see 6); Fast mode is the same IR with an f32 kernel |
 | Bail-outs came from interrupt-controller and mode writes; after cutting there are none | step 0 | superblocks must handle these as explicit exits, not guards |
 | 842 compute ops per pass still run on `exec_compute_op` (146 cycles) | profile | the IR must cover every compute form, or the pass stays interpreter-bound |
 | Interpreter step ~ AOT step (~100 cycles) before step 1 | profile | an interpreter fallback is never a cheap escape; coverage has to be ~100% of executed steps |
@@ -79,7 +79,7 @@ Checkpoint rule from the brief: after A and after B report steps/s and x over bu
 
 ## 6. Expected end state and the honest limit
 
-With ~3 000 compute ops per pass at ~58 cycles per element (SIMD both elements): 3 000 x 2 x 58 = 348 k cycles = 77 us = x1.7 of the budget **before any transfer**. So in Exact mode the best case is about x2.2 to x2.6 unless the exact kernel itself gets cheaper. Candidate kernel work belongs in stage B/C as a measured sub-item: an exact fast path for operands in the normal range with equal exponents (add) and a table-free 24x24 multiply, both bit-exact by construction and verified against `float_ops` on the existing random-state tests. If after B the curve flattens above x2 (expected: compute-bound at about x2.5), the result is: Exact SHARC LLE does not fit one host core per DSP in real time; Fast tier (stage E) is the live tier and needs its null/listening test.
+The first version of this section estimated 3 000 ops x 2 elements x 58 cycles = 77 us (x1.7) for compute. That mixed units: the 58 cycles are per element, the op count is per both-element op. Stage B measured 2 831 ops x 59 cycles per both-element op = 167 k cycles = about 37 us (x0.8, 25% of the 161 us pass). The limit is therefore the rest of the pass: with compute free, the other 75% is about 121 us = x2.6, so in Exact mode x2 is not reachable unless transfers, glue and dispatch get cheaper by a further third, which the identified rows (about -15% at best) do not give. Candidate kernel work belongs in stage B/C as a measured sub-item: an exact fast path for operands in the normal range with equal exponents (add) and a table-free 24x24 multiply, both bit-exact by construction and verified against `float_ops` on the existing random-state tests. If after B the curve flattens above x2 (expected: compute-bound at about x2.5), the result is: Exact SHARC LLE does not fit one host core per DSP in real time; Fast tier (stage E) is the live tier and needs its null/listening test.
 
 ## 7. Risks
 
@@ -87,7 +87,7 @@ With ~3 000 compute ops per pass at ~58 cycles per element (SIMD both elements):
 |---|---|
 | Compile time and code size of inlined locals (the first prototype needed 12 min per image; 2.5 MB of code lost) | code-bytes-per-step and `rustc` seconds reported per stage; shared cold paths; chunking per superblock |
 | Exactness of lazy flags | the interpreter-state diff at every 20 000 steps; per-op random-state tests like `xfer_equals_the_interpreter_on_random_states` over all flag-live and flag-dead orderings |
-| Self-modifying SRAM code | unchanged: entry memcmp of the code snapshot; store into the code extent is an exit |
+| Self-modifying SRAM code | unchanged: entry memcmp of the code snapshot. A store into the code of the block that is running is not an exit (stores re-check the signature only after a non-SRAM access): the change is seen at the next block entry. ASSUMED not to occur inside one block; the 1:1 diff on ORG Core2 holds |
 | Host noise (+-15%, other sessions running) | minimum mean of 10 alternating runs per binary; same method as the experiment |
 | Scope | stages A to B on ORG Core2 first; PNO Core2 and the missing cores only after the checkpoint |
 

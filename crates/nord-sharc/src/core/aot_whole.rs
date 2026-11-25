@@ -35,6 +35,10 @@ pub(super) enum Chk {
     Sig,
     /// A store through the data bus: the signature is re-checked only when the access left the
     /// internal SRAM (`Core::aot_slow`), because a store to SRAM cannot change guarded state.
+    /// A store into the code of the running block is not an exit: self-modified SRAM code is only
+    /// seen at the next block entry (`aot_code_matches`). ASSUMED not to happen inside one block
+    /// (the 1:1 diff on ORG Core2 holds); a block that rewrites its own later steps would run the
+    /// stale lowered code until it ends.
     Slow,
 }
 

@@ -236,27 +236,19 @@ mod tests {
     }
 
     /// Everything [`Core::aot_tail`] and the tail of [`Core::step`] may touch.
-    fn tail_state(
-        c: &Core,
-    ) -> (
-        u32,
-        u64,
-        usize,
-        Option<u32>,
-        Option<(u8, u32)>,
-        u8,
-        u32,
-        u32,
-    ) {
-        (
-            c.pc,
-            c.steps,
-            c.loops.len(),
-            c.loops.last().map(|f| f.remaining),
-            c.pending.map(|p| (p.slots, p.target)),
-            c.cb_wrap.get(),
-            c.irq.window_len,
-            c.sys.stky[0],
+    fn tail_state(c: &Core) -> String {
+        format!(
+            "{:?}",
+            (
+                c.pc,
+                c.steps,
+                c.loops.len(),
+                c.loops.last().map(|f| f.remaining),
+                c.pending.map(|p| (p.slots, p.target)),
+                c.cb_wrap.get(),
+                c.irq.window_len,
+                c.sys.stky[0],
+            )
         )
     }
 
