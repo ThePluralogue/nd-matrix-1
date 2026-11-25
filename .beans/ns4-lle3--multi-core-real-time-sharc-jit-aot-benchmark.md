@@ -34,7 +34,7 @@ Full ARM0 integration (`ns4-lle5`); SPORT audio routing (`ns4-lle4`).
 - Follow-up in the same PR: `core/aot_prof.rs` profile (`lle_sharc_bench --profile`), compute fields of lowered transfers on generated `Pe` kernels (one per distinct op, exact/approx by generation-time tier), gap analysis table and curve in the research note. A block-splitting variant (v3) verified 1:1 but was slower and was reverted.
 
 - Bounded speed experiment (D247, `docs/research/sharc-lle-realtime.md` "Bounded redesign experiment"): blocks end at guard-changing instructions (bails 29 to 0 per pass), one shared handler per transfer shape (module code ~2.5 MB to ~0.4 MB), compute in place on the core registers (`Pe<'a>`). ORG Core2 x7.2 to x4.6 of the 46.08 us budget (fast-f32 x4.0), 1:1 with the interpreter over 1 854 395 steps. Stopped at the x3.5 checkpoint: x2 is not reachable in exact mode with this design. PNO Core2 (interpreter) is now the slowest measured core at x6.7; PNO Core1 x1.5. Acceptance criteria 2 and 3 stay unticked (cores still missing, no core under budget).
-- Lowering v2 (`docs/research/sharc-lowering-v2.md`, research note "Lowering v2 stages"): stage A slice 1 (fixed ALU ops on `Pe`) is within noise (x4.54 to x4.46, 7 interleaved runs each); the remaining coverage rows bound the gain to about x3.2, so stages B to D were not started and the checkpoint stop applies.
+- Lowering v2 stage A (`docs/research/sharc-lowering-v2.md`, research note "Lowering v2 stages"): fixed ALU, float ALU and shifter ops on `Pe`, loop-end blocks; `exec_compute_op` ops per pass 842 to 88, ORG Core2 x4.57 to x4.13 (7 interleaved runs, outside noise), 1:1 with the interpreter. Stage B not started.
 
 ## Left to do (status stays in-progress)
 

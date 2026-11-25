@@ -109,6 +109,6 @@ Three sessions share one host and build concurrently, so:
 
 ## Follow-ups
 
-- Result (2026-11-24): stage A slice 1 measured within noise and the profile bounds full stage A to about x3.2; stages B to D not started (see "Lowering v2 stages").
+- Stage A measured (2026-11-24): ORG Core2 x4.57 to x4.13, 1:1 holds; see "Lowering v2 stages". Stage B next.
 - Stage reports append to [sharc-lle-realtime](sharc-lle-realtime.md) section "Lowering v2 stages" with the tables above filled in.
 - A decision entry once stage B is measured.
