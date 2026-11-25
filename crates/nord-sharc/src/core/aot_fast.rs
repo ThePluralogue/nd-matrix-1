@@ -2,8 +2,11 @@
 //! and `FLOAT Rx BY Ry` on 40-bit registers, equal to `float::add`, `float::mul` and
 //! `float_conv::from_int` result for result and flag for flag, but with `u64` arithmetic instead
 //! of the `u128` of the reference kernels and a direct path for ordinary (normal, non-zero)
-//! operands. Zero, denormal, infinite and NaN operands, and results that overflow or flush,
-//! delegate to the reference kernel, so the special-value rules stay in one place.
+//! operands (add: `aot_fadd.rs`, rounding: `aot_round.rs`). Zero and denormal operands, and
+//! results that overflow or flush, are handled by cold paths in `aot_round.rs` (a zero operand
+//! passes the other through, a zero product is a signed zero); infinity, NaN and RND32 with a
+//! zero operand delegate to the reference kernel, so the remaining special-value rules stay in
+//! one place.
 //!
 //! Provenance: ASSUMED equal to the reference kernels by construction; the claim "bit-identical"
 //! is VERIFIED by the randomized equivalence tests below (`fast_*_equals_reference_*`: operand

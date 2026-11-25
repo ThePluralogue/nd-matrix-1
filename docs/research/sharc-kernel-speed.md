@@ -46,12 +46,13 @@ How much of that can the arithmetic itself give back while staying bit-exact?
 | add/gap_1_8/rne | 6.62 [6.48-7.31] | 3.29 [3.17-3.64] | 30 -> 15 | 2.01x | real |
 | add/gap_24_60/rne | 7.84 [7.71-8.15] | 3.26 [3.21-3.49] | 35 -> 15 | 2.40x | real |
 | sub/cancel/rne | 7.70 [7.60-8.04] | 3.22 [3.18-3.45] | 35 -> 14 | 2.39x | real |
+| add/gap_24_60/trunc | 6.17 [5.92-6.62] | 4.22 [4.08-4.71] | 28 -> 19 | 1.46x | real (TRUNC with a gap above about 31 lands on a boundary and takes the exact integer kernel; RNE and RND32 stay at 3.3 ns) |
 | add/near_overflow/rne | 5.91 [5.76-6.86] | 3.23 [3.18-3.79] | 27 -> 15 | 1.83x | real |
 | add/near_underflow/rne | 6.00 [5.87-6.65] | 3.27 [3.20-3.37] | 27 -> 15 | 1.83x | real |
 | add/mixed/rne (25% special operands) | 5.89 [5.77-6.34] | 3.75 [3.65-3.92] | 27 -> 17 | 1.57x | real |
 | add/zero_operand/rne | 4.14 [4.04-4.23] | 4.00 [3.95-4.78] | 19 -> 18 | 1.03x | within noise |
 | mul/zero_operand/rne | 3.80 [3.71-4.27] | 3.46 [3.37-4.91] | 17 -> 16 | 1.10x | within noise |
-| mul/near_overflow/rne | 4.12 [4.08-6.38] | 4.64 [4.54-4.81] | 19 -> 21 | 0.89x | within noise (band set by one outlier; the cold exception path is +0.5 ns in every run) |
+| mul/near_overflow/rne | 4.12 [4.08-6.38] | 4.64 [4.54-4.81] | 19 -> 21 | 0.89x | small consistent regression: +0.5 ns in every run, 0.89x of median (the cold exception path is slower; the min-max bands overlap only because of one outlier in the baseline) |
 | mul/near_underflow/rne | 4.33 [4.18-6.71] | 4.00 [3.92-6.30] | 19 -> 18 | 1.08x | within noise |
 | mul/mixed/rne | 4.58 [4.50-4.80] | 3.75 [3.68-4.61] | 21 -> 17 | 1.22x | within noise |
 
@@ -62,7 +63,9 @@ reference kernels (`float::add`, `float::mul`) cost 13 to 26 ns on the same oper
 Target of at least 2x on normal-range operands: **met for add and sub** (1.98x to 2.02x on `rne`, `trunc`, `r32`
 normal operands, 2.0x to 2.4x by gap class), **met for mul** in round-to-nearest (2.5x), **not met for mul in
 TRUNC** (1.57x: the old kernel skips the rounding branch there and is already cheap). Operands that hit the cold
-paths (zero, denormal, infinity, NaN, overflow or flush results) are unchanged within noise.
+paths (zero, denormal, infinity, NaN, overflow or flush results) gain nothing: unchanged within noise, except
+`mul/near_overflow`, which is about 0.5 ns slower. "Cycles" in this note are ns x 4.5 (assumed clock, not
+measured cycle counts).
 
 ## What changed
 
@@ -105,6 +108,8 @@ have no cross-lane work, so a pair call compiles to the same instructions; not b
   (add gaps 0..=40, mul `2^i x 2^j`), a full grid of exponent edges (1, 2, 3, ..., 253, 254) x boundary fractions x
   extension bytes (overflow, flush), and 200 000 cancellations to every leading-bit position. Each case runs
   all four TRUNC x RND32 modes and compares every `Out` field with `float::add` / `float::mul`.
+- `gaps_around_the_exact_double_limit_...`: gaps 19..=23 x sparse fractions, add and sub, both orders, all modes
+  (a gap limit of 21 now fails 2 tests, 22 fails 4).
 - Mutation check: raising the exact-sum gap from 20 to 28 makes five tests fail, so the sweeps reach the
   inexact-double branch; setting it to 200 fails ten.
 - `aot_round.rs` and `aot_fadd.rs` carry their own unit tests (rounding ties, carry, flush/overflow, the
@@ -119,7 +124,9 @@ A 32-bit x86 target using x87 extended precision would double-round and fail the
 - Against the x1.7 floor of PR #672 (6000 elements x 13 ns = 78 us per pass against 46.08 us): the 13 ns figure
   is the whole element, of which this benchmark isolates 6.6 ns (30 cycles) of kernel. Taking the mean saving of
   an add/mul mix (3.65 ns), the exact path drops to 6000 x 9.35 ns = 56 us, **x1.22 of budget**. That removes
-  28% of the exact cost and 69% of the 0.7 budget excess. Real-time exact execution of this workload is still
+  28% of the exact cost and 69% of the 0.7 budget excess. This is a projection, not a measurement: it assumes
+  the 13 ns per element of PR #672, a 50/50 add/mul mix, all-normal operands (no zero, denormal, special or
+  overflow results) and that the kernels are the only difference; there is no whole-pass measurement. Real-time exact execution of this workload is still
   not reached by arithmetic alone: the remaining 6.4 ns per element is the glue around the kernel (register
   read of the 40-bit value with its extension tag, `set_f40`, flag and STKY updates), which this change does
   not touch, and the figure assumes the kernels are the only difference between the 13 ns and the benchmark.

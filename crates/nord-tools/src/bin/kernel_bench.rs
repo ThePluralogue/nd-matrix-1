@@ -243,7 +243,7 @@ fn main() {
     // other rounding modes on the ordinary classes
     for (name, pairs) in data
         .iter()
-        .filter(|(n, _)| matches!(*n, "normal" | "gap_1_8"))
+        .filter(|(n, _)| matches!(*n, "normal" | "gap_1_8" | "gap_24_60"))
     {
         rows.push((
             Row {

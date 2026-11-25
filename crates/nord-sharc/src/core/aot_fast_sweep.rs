@@ -105,6 +105,28 @@ fn every_exponent_gap_and_fraction_pair_matches_for_add_and_sub() {
     }
 }
 
+/// Gaps 19..=23 straddle the limit (20) up to which the double sum is exact: sparse fractions
+/// whose low bits are set make the 54-bit sum of gap 21 and above tie in the double, so a wrong
+/// limit (21 or more) is caught by a mismatch here, for add and sub in every mode.
+#[test]
+fn gaps_around_the_exact_double_limit_match_in_both_orders_and_all_modes() {
+    let smalls: Vec<u64> = (0..31)
+        .flat_map(|k| [1u64 << k, (1 << k) | 1, (1u64 << k) - 1])
+        .chain(FRACS)
+        .collect();
+    for gap in 19..=23u64 {
+        for fa in FRACS {
+            for &fb in &smalls {
+                for (sa, sb) in [(false, false), (false, true), (true, false), (true, true)] {
+                    let (big, small) = (pack(sa, 140 + gap, fa, 0), pack(sb, 140, fb, 0));
+                    check_pair(big, small);
+                    check_pair(small, big);
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn single_bit_significands_hit_every_tie_position_in_add_and_mul() {
     for gap in 0..=40u64 {
