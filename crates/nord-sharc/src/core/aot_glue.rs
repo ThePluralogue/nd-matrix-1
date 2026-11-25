@@ -56,7 +56,7 @@ impl Core {
     #[inline(always)]
     pub(super) fn aot_move_dst(&mut self, dst: u8, m: (u32, u32, u8)) {
         let n = usize::from(dst);
-        self.write_ureg(dst, m.0);
+        self.aot_write_ureg(dst, m.0);
         (self.fx.tag[n], self.fx.lo[n]) = (m.1, m.2);
     }
 
@@ -110,6 +110,23 @@ impl Core {
     /// and delay-slot logic when one is active), the step count and the per-instruction latches.
     #[inline(always)]
     pub(super) fn aot_tail(&mut self, pc: u32, kind: crate::visa::Kind, next: u32) {
+        if self.loops.is_empty()
+            && self.pending.is_none()
+            && self.cb_wrap.get() == 0
+            && self.irq.window_len == 0
+        {
+            self.pc = next;
+            self.steps += 1;
+        } else {
+            self.aot_tail_slow(pc, kind, next);
+        }
+    }
+
+    /// [`Core::aot_tail`] with a loop, a pending delayed branch, a circular-buffer wrap or an open
+    /// interrupt window: kept out of line so the hot path of every handler stays small.
+    #[cold]
+    #[inline(never)]
+    fn aot_tail_slow(&mut self, pc: u32, kind: crate::visa::Kind, next: u32) {
         self.pc = if self.loops.is_empty() && self.pending.is_none() {
             next
         } else {
@@ -121,6 +138,31 @@ impl Core {
         }
         if self.irq.window_len != 0 {
             self.close_window_if_left();
+        }
+    }
+
+    /// [`Core::write_ureg`] with the data and DAG register files inline (the register code is a
+    /// constant in a generated handler, so the match folds); system registers stay out of line.
+    #[inline(always)]
+    pub(super) fn aot_write_ureg(&mut self, code: u8, v: u32) {
+        let n = (code & 15) as usize;
+        match (code >> 4) & 7 {
+            0 => {
+                self.r[n] = v;
+                self.fx.clear(n);
+            }
+            1 => self.i[n] = v,
+            2 => self.m[n] = v,
+            3 => self.l[n] = v,
+            4 => {
+                self.b[n] = v;
+                self.i[n] = v;
+            }
+            5 => {
+                self.s[n] = v;
+                self.fx_y.clear(n);
+            }
+            _ => self.write_ureg(code, v),
         }
     }
 

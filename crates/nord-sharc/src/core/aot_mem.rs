@@ -422,11 +422,11 @@ impl Core {
         }
         match m.data {
             Data::LoadImm { ureg, value } => {
-                self.write_ureg(ureg, value);
+                self.aot_write_ureg(ureg, value);
                 if self.simd() && (ureg < 16 || ureg >> 4 == 5) {
-                    self.write_ureg(if ureg < 16 { 0x50 | ureg } else { ureg & 15 }, value);
+                    self.aot_write_ureg(if ureg < 16 { 0x50 | ureg } else { ureg & 15 }, value);
                 } else if self.simd() && (ureg == 0x76 || ureg == 0x78) {
-                    self.write_ureg(ureg + 1, value);
+                    self.aot_write_ureg(ureg + 1, value);
                 }
                 return Ok(());
             }
@@ -505,12 +505,12 @@ impl Core {
                     }
                 } else {
                     let v = self.aot_rd(addr).map_err(bad)?;
-                    self.write_ureg(ureg, v);
+                    self.aot_write_ureg(ureg, v);
                     let data = ureg < 16 || (0x50..0x60).contains(&ureg);
                     if simd && data {
                         let twin = if ureg < 16 { 0x50 | ureg } else { ureg & 15 };
                         let v = self.aot_rd(addr.wrapping_add(1)).map_err(bad)?;
-                        self.write_ureg(twin, v);
+                        self.aot_write_ureg(twin, v);
                     }
                 }
                 if !matches!(m.addr, Addr::Direct(_)) {
