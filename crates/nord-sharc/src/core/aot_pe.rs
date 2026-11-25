@@ -500,6 +500,8 @@ impl Core {
     /// Records the block's accumulated arithmetic-exception bits of element `y`: STKY and the
     /// latched `FIXI`/`FLTOI`/`FLTUI`/`FLTII` interrupts, like `note_arith_exception` called
     /// from PEy's swapped view (the writable-bit mask is PEx's).
+    #[cold]
+    #[inline(never)]
     pub(super) fn aot_note_sticky(&mut self, y: bool, sticky: u32) {
         self.note_arith_exception_in(usize::from(y), 0, sticky);
     }
