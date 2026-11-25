@@ -261,8 +261,8 @@ fn run_{bi}(core: &mut Core) -> Result<(), Fault> {{
             .sum();
         let _ = writeln!(
             out,
-            "    AotBlock {{ start: 0x{:x}, last: 0x{:x}, steps: {}, native: {native}, code: &CODE_{bi}, run: run_{bi} }},",
-            b.start, b.last, b.steps
+            "    AotBlock {{ start: 0x{:x}, last: 0x{:x}, steps: {}, native: {native}, dynamic: {}, code: &CODE_{bi}, run: run_{bi} }},",
+            b.start, b.last, b.steps, b.dynamic_exit
         );
     }
     let _ = writeln!(out, "];");

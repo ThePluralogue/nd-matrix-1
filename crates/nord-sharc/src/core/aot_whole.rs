@@ -133,6 +133,23 @@ impl Core {
         (d.insn.len as u32, op, d.insn.kind, d.insn.parcels, d.w)
     }
 
+    /// The last-instruction pcs of the counter loops (`DO ... UNTIL LCE`) entered by `executed`.
+    /// A block ends there, so the loop-back is the block's own exit (`finish_step` in the tail).
+    pub(super) fn loop_ends(&self, executed: &BTreeMap<u32, bool>) -> BTreeSet<u32> {
+        executed
+            .keys()
+            .filter(|&&pc| !self.isa_at(pc))
+            .filter_map(|&pc| match self.whole_decode(pc).1 {
+                DecodedOp::Flow(FlowOp::DoUntilCounter { end, .. })
+                    if executed.contains_key(&end) =>
+                {
+                    Some(end)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Block start pcs for the executed pcs `executed` (pc to "reached from outside the previous
     /// instruction") plus `forced`: the leaders, and the pc after every flow instruction with its
     /// delay slots.
@@ -147,6 +164,12 @@ impl Core {
             .filter(|p| executed.contains_key(p))
             .collect();
         starts.extend(executed.iter().filter(|(_, &l)| l).map(|(&p, _)| p));
+        for end in self.loop_ends(executed) {
+            let after = end + self.whole_decode(end).0;
+            if executed.contains_key(&after) {
+                starts.insert(after);
+            }
+        }
         for &pc in executed.keys() {
             if self.isa_at(pc) {
                 continue;
@@ -185,6 +208,7 @@ impl Core {
         let mut pending: Vec<(u32, u32, LoweredOp)> = Vec::new();
         let (mut slots_left, mut ended) = (0u32, false);
         let mut last_start = start;
+        let loop_ends = self.loop_ends(executed);
         let flush = |pending: &mut Vec<(u32, u32, LoweredOp)>, items: &mut Vec<Item>| {
             if pending.len() >= MIN_BATCH {
                 items.push(Item::Batch(pending.drain(..).map(|p| p.2).collect()));
@@ -219,6 +243,13 @@ impl Core {
                     break;
                 }
                 continue;
+            }
+            if loop_ends.contains(&pc) && terminator(&op).is_none() {
+                flush(&mut pending, &mut items);
+                items.push(self.step_item(pc, next, true, Pos::Plain));
+                pc = next;
+                ended = true;
+                break;
             }
             if let Some(slots) = terminator(&op) {
                 flush(&mut pending, &mut items);
@@ -394,6 +425,25 @@ mod tests {
             blocks.len(),
             2,
             "the pc after the delay slots starts a block"
+        );
+    }
+
+    #[test]
+    fn a_counter_loop_end_ends_its_block_and_leaves_the_loop_back_to_its_tail() {
+        // DO (+3) UNTIL LCE, LCNTR = 4; body: one ADD at the loop end; then one more ADD
+        let mut p = vec![0x0C00, 0x0480, 0x0003];
+        p.extend_from_slice(&ADD);
+        p.extend_from_slice(&ADD);
+        let c = core_with(&p);
+        let ex = executed(&c, 3);
+        assert_eq!(c.loop_ends(&ex).into_iter().collect::<Vec<_>>(), [c.pc + 3]);
+        let blocks = c.lower_whole_pass(&ex, &[]).unwrap();
+        assert_eq!(blocks.len(), 3, "DO, the body, the code after the loop");
+        let body = &blocks[1];
+        assert_eq!((body.start, body.last, body.steps), (c.pc + 3, c.pc + 3, 1));
+        assert!(
+            body.dynamic_exit,
+            "the tail sets the pc (loop-back or fall out)"
         );
     }
 
