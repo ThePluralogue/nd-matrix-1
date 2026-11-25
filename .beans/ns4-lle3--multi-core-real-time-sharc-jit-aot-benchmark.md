@@ -33,6 +33,8 @@ Full ARM0 integration (`ns4-lle5`); SPORT audio routing (`ns4-lle4`).
 - Result: ORG Core2 AOT 1:1 with the interpreter over 1 854 395 steps; x1.34 per pass; 8.0x over the 46.08 us budget. Verdict NO-GO for real time, see `docs/research/sharc-lle-realtime.md`.
 - Follow-up in the same PR: `core/aot_prof.rs` profile (`lle_sharc_bench --profile`), compute fields of lowered transfers on generated `Pe` kernels (one per distinct op, exact/approx by generation-time tier), gap analysis table and curve in the research note. A block-splitting variant (v3) verified 1:1 but was slower and was reverted.
 
+- Progress note (2026-11-25): exact float kernels made about 2x cheaper (add/sub 30 -> 15 cycles, mul 30 -> 12, normal range, bit-exact against `float.rs`); see `docs/research/sharc-kernel-speed.md`. Projected x1.7 -> x1.22 of budget for the exact path; not yet measured in the whole-pass AOT. Criteria unchanged.
+
 ## Left to do (status stays in-progress)
 
 - Presets/jobs for ORG Core1 (P4I start, own idle pc), FX Core1/Core2 (`FX1`/`FX2` consts exist; add presets + `FxPeer` tick hook), SY1SY2/SMP (ISR job kind in `pass_sched`): see "Missing cores" in `docs/research/sharc-lle-realtime.md`.
