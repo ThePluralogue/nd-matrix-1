@@ -58,7 +58,9 @@ pub(super) fn pe_supports(op: ComputeOp) -> bool {
         ComputeOp::FloatAlu { op, .. } => {
             matches!(op, 0x81 | 0x82 | 0xDA | 0xE0..=0xE3 | 0xA2 | 0xC4)
         }
-        ComputeOp::FixedAlu { op, .. } => matches!(op, 0x01 | 0x02),
+        ComputeOp::FixedAlu { op, .. } => {
+            matches!(op, 0x01 | 0x02 | 0x0A | 0x21 | 0x22 | 0x29 | 0x40..=0x42 | 0x61..=0x63)
+        }
         ComputeOp::Multifunction { c } => float_multi(c).is_some(),
         _ => false,
     }
@@ -226,6 +228,67 @@ impl<'a> Pe<'a> {
         }
     }
 
+    /// `Core::fixed_add` / `fixed_sub` (`Rx + Ry + cin`, or `Rx + !Ry + cin`) with ALUSAT.
+    #[inline(always)]
+    fn fixed_addsub(&mut self, n: u8, x: u32, y: u32, cin: u64, sub: bool) {
+        let (yy, ey) = if sub {
+            (u64::from(!y), -i64::from(y as i32) - 1)
+        } else {
+            (u64::from(y), i64::from(y as i32))
+        };
+        let t = u64::from(x) + yy + cin;
+        let exact = i64::from(x as i32) + ey + cin as i64;
+        let av = i32::try_from(exact).is_err();
+        let r = if av && self.sat {
+            if exact > 0 {
+                0x7FFF_FFFF
+            } else {
+                0x8000_0000
+            }
+        } else {
+            t as u32
+        };
+        self.fixed_result(n, r, t >> 32 != 0, av);
+    }
+
+    /// The fixed-point ALU opcodes of `Core::fixed_alu` that [`pe_supports`] lists.
+    #[inline(always)]
+    fn fixed_alu(&mut self, op: u8, n: u8, rx: u32, ry: u32) {
+        let plain = |s: &mut Self, r: u32| s.fixed_result(n, r, false, false);
+        match op {
+            0x01 => self.fixed_addsub(n, rx, ry, 0, false),
+            0x02 => self.fixed_addsub(n, rx, ry, 1, true),
+            0x22 => self.fixed_addsub(n, 0, rx, 1, true),
+            0x29 => self.fixed_addsub(n, rx, 1, 0, false),
+            0x21 => plain(self, rx),
+            0x40 => plain(self, rx & ry),
+            0x41 => plain(self, rx | ry),
+            0x42 => plain(self, rx ^ ry),
+            0x61 => plain(self, (rx as i32).min(ry as i32) as u32),
+            0x62 => plain(self, (rx as i32).max(ry as i32) as u32),
+            0x63 => {
+                let lim = i64::from(ry as i32).abs();
+                plain(self, i64::from(rx as i32).clamp(-lim, lim) as u32);
+            }
+            _ => {
+                // 0x0A: signed compare; CACC shifts in `Rx > Ry`, no result register
+                let greater = (rx as i32) > (ry as i32);
+                *self.astat = *self.astat & 0x00FF_FFFF
+                    | ((*self.astat >> 24 >> 1) | u32::from(greater) << 7) << 24;
+                (
+                    self.f.az, self.f.an, self.f.av, self.f.ac, self.f.as_, self.f.ai,
+                ) = (
+                    rx == ry,
+                    (rx as i32) < (ry as i32),
+                    false,
+                    false,
+                    false,
+                    false,
+                );
+            }
+        }
+    }
+
     /// A float ALU opcode (`Core::float_alu` + the AF update of `exec_compute_op`).
     #[inline(always)]
     fn float_alu(&mut self, op: u8, n: u8, x: u8, y: u8) {
@@ -253,28 +316,7 @@ impl<'a> Pe<'a> {
             }
             ComputeOp::FixedAlu { op, n, x, y } => {
                 let (rx, ry) = (self.r[usize::from(x)], self.r[usize::from(y)]);
-                let (t, exact) = if op == 0x01 {
-                    (
-                        u64::from(rx) + u64::from(ry),
-                        i64::from(rx as i32) + i64::from(ry as i32),
-                    )
-                } else {
-                    (
-                        u64::from(rx) + u64::from(!ry) + 1,
-                        i64::from(rx as i32) - i64::from(ry as i32),
-                    )
-                };
-                let av = i32::try_from(exact).is_err();
-                let r = if av && self.sat {
-                    if exact > 0 {
-                        0x7FFF_FFFF
-                    } else {
-                        0x8000_0000
-                    }
-                } else {
-                    t as u32
-                };
-                self.fixed_result(n, r, t >> 32 != 0, av);
+                self.fixed_alu(op, n, rx, ry);
                 (*self.astat) &= !AF;
             }
             ComputeOp::Multifunction { c } => {
@@ -446,7 +488,9 @@ mod tests {
             0..=3 => LoweredOp::Compute(falu(ops[(r.next() % 9) as usize])),
             4 | 5 => LoweredOp::Compute(ComputeOp::FloatMul { n, x, y }),
             6 => LoweredOp::Compute(ComputeOp::FixedAlu {
-                op: 1 + (r.next() % 2) as u8,
+                op: [
+                    0x01, 0x02, 0x0A, 0x21, 0x22, 0x29, 0x40, 0x41, 0x42, 0x61, 0x62, 0x63,
+                ][(r.next() % 12) as usize],
                 n,
                 x,
                 y,

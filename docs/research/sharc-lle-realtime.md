@@ -181,6 +181,42 @@ After the first two steps ORG Core2 is at x4.58, above the x3.5 line, and each s
 What would still change the picture (not done here): fast-f32 as the live tier needs a listening or null test and a cheaper non-compute path (it is x4.0 now); an AOT module for PNO Core2 (its `--aot-pcs` run is not part of this change); modelling the 842 ops per pass that still run on `exec_compute_op` in `Pe` (about -9% by the table above).
 
 
+## Lowering v2 stages (checkpoint after stage A, slice 1)
+
+Design: [sharc-lowering-v2](sharc-lowering-v2.md). Protocol: section 8 there (no cargo/rustc running, 7 interleaved runs per binary after warm-up, medians with min and max; Ryzen 9 5900XT, desktop, no throttling seen). Tags: EMPIRICAL.
+
+### What was built
+
+Stage A as written (a new IR tree `aot2/`, decode of every executed form, no `aot_step`) was not built in full. The measurements below bound what it can return, so this slice did the cheapest part of its coverage goal and measured it: the fixed-point ALU opcodes `0x0A 0x21 0x22 0x29 0x40..0x42 0x61..0x63` now run on the in-place `Pe` kernel instead of `exec_compute_op` (plus the PE swap). `pe_ops_equal_interpreter_ops_on_random_simd_state` covers them (Exact and Guarded), and `AOT DIFF OK: 273 blocks, boot 100000 steps + 300 passes (1854395 steps) matched 1:1` holds.
+
+### Measurement
+
+| Build | Median us | Min | Max | x budget |
+|---|---:|---:|---:|---:|
+| step 2 (before this slice), 7 clean runs | 209.4 | 205.9 | 213.8 | 4.54 |
+| step 3 (fixed ALU on `Pe`), 7 clean runs | 205.3 | 202.8 | 214.5 | 4.46 |
+
+The medians differ by 2%, less than the larger min-max band (about 4%): **within noise**, so no gain is claimed. Ops through `exec_compute_op` per pass went 842 to 697 (the profile shows 139 cycles per op there against 63 on `Pe`).
+
+### Why this is the stop point
+
+Upper bound of every remaining coverage row of the profile, taking each as free (an impossible best case):
+
+| Row | Share of pass |
+|---|---:|
+| 697 ops still on `exec_compute_op`, moved to `Pe` speed (139 to 63 cycles) | about 5% |
+| 480 generic `aot_step` steps, as cheap as lowered transfers | about 8% |
+| 256 steps after a refused entry (hardware loop end, interrupt due) | about 8% |
+| block entry/exit and loop glue | about 9% |
+
+Even removing all of it at once gives roughly -30%, from x4.5 to about x3.2. The compute floor in exact mode (about 2 990 ops x 2 elements x 13 ns) is x1.7 alone before any transfer. Stage A's own success line was at most x3.7 and stage B's at most x2.1; the data say stage A ends near x3.5 to x4 and that locals (stage B) address the 35% transfer row, which the earlier experiment showed cannot be paid for with inlined code (2.5 MB lost to 0.4 MB). The curve flattens far above x2: **stopped at the checkpoint as the brief prescribes.** Stages B to D were not started.
+
+### What would still move the number (not done)
+
+- Fast tier as the live tier (x4.0 today; compute is not the bottleneck there), with a listening or null test.
+- An exact fast path for the float add and multiply kernels (another session owns `core/aot_fast.rs`).
+- A real stage B/C prototype only if someone accepts a result near x2.5 to x3 as worth weeks of work; nothing measured here shows x2.
+
 ## Alternatives (what to do instead)
 
 - **HLE hybrid** (recommended by the numbers): run LLE only for cores that fit the budget and keep the Rust HLE engines for the rest. On these measurements only PNO Core1 (x1.6 over, closest) could ever fit; ORG/PNO Core2 are x7 to x8 over.
