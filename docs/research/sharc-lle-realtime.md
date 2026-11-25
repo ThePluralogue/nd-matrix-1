@@ -204,6 +204,35 @@ Coverage now: ops on `exec_compute_op` 842 to 88 per pass (97 cycles per op ther
 
 Stage A's line was at most x3.7 (120 cycles per step); the measured value is x4.1 (about 135 cycles per step at 4.5 GHz). The rows that stage A could still remove (generic steps about 2%, refused entries up to about 5%) cannot close that gap. What remains is the average cost of an ordinary step: lowered transfers (about 83 cycles each), 64 cycles per compute op, block glue (about 6%) and dispatch (about 4%). That is the target of stage B. An ablation of the per-step bookkeeping in `aot_tail` was attempted and discarded: removing it breaks the loop and delay-slot state so the pass ends early, which makes the timing meaningless.
 
+### Stage B: what the measurements allowed (report)
+
+Method for this stage: read the compiled handlers (`cargo rustc --emit asm` of the module) instead of guessing. A shared transfer handler for a plain `DM` load carried the whole inlined `finish_step` (loop, arithmetic loop, delayed branch), the circular-buffer latch and the interrupt-window close, about 80 cold instructions per handler, and called `write_ureg` out of line for a constant register code. Every kernel carried five inlined interrupt-latch scans for a case (a pending arithmetic exception) that is rare.
+
+| Slice | Change | ORG Core2 median us (min..max, 7 interleaved runs) | x budget |
+|---|---|---|---:|
+| before (stage A end) | | 189.1 (186.6..197.0) | 4.10 |
+| B1 | handler tail: four compares on the hot path, everything else in a cold out-of-line `aot_tail_slow`; `aot_write_ureg` inline for the data and DAG register files | 164.6 (161.4..169.2), outside noise | 3.57 |
+| B2 | `aot_note_sticky` out of line (code size) | 160.9 (158.9..164.4), within noise | 3.49 |
+
+1:1 diff after each: `AOT DIFF OK: 274 blocks, boot 100000 steps + 300 passes (1854395 steps) matched 1:1`. Per core, final build (5 runs together, mean us): PNO Core1 interpreter 61.0 to 67.5 (x1.3 to x1.5), PNO Core2 interpreter 299.8 to 310.1 (x6.5 to x6.7), ORG Core2 AOT 160.6 to 163.5 (x3.5). Fast-f32 module ORG2F: 134.9 us (x2.93, min of 7).
+
+Tried and discarded (no gain or invalid):
+
+| Try | Result |
+|---|---|
+| `codegen-units = 1` for the bench build | 166.4 (164.7..175.1) against 161.7 (158.3..163.7): no gain, slightly worse |
+| removing `aot_tail` bookkeeping, skipping the transfer bodies | the pass state diverges (passes end early or hit the step limit), so the timing means nothing; both ablations dropped |
+
+Why the stage B design (registers and flags in native locals per superblock, dead-flag and lazy-flag elimination) was not built:
+
+- The compute kernels are at the arithmetic floor already: 2 831 ops per pass at 59 cycles per op (both elements) against the 13 ns (58 cycles) of one exact 40-bit float add. Flags are about 10 of ~250 instructions of a kernel, so lazy flags and dead-flag elimination are worth at most ~3% of the compute share (25% of the pass), well under the noise band. Only a cheaper exact add or multiply moves it (`aot_fast.rs`, another session).
+- Native locals need straight-line code that holds the register file across many sites, which the earlier experiment showed loses to shared out-of-line handlers (code bytes fetched per pass, 2.5 MB against 0.4 MB). The transfer state (DAG registers, data registers) is already in L1 in the core struct; the transfer cost is instruction count and fetch, which B1 attacked directly.
+- What remains by profile (share of pass time): compute kernels 25%, interpreter-run steps 21% (481 generic `aot_step` steps 11%, 255 steps after 14 blocks per pass refused because a timer event is due inside them 10%), dispatch 5%, loop glue 7%, lowered transfers the rest. Each is worth 2 to 5% to the next slice; none reaches the x2.5 line (about 115 us).
+
+### Verdict after stage B
+
+ORG Core2 exact: x7.2 (merged prototype) to x3.5, bit-exact. Fast-f32 tier x2.9. PNO Core2 on the interpreter is the slowest core (x6.5 to x6.7) and has no AOT module. x2 is not reachable in exact mode (the compute floor alone is x1.7 before any transfer); x2.5 would need roughly -28% more, and the identified remaining rows add up to about -15% at best.
+
 ## Alternatives (what to do instead)
 
 - **HLE hybrid** (recommended by the numbers): run LLE only for cores that fit the budget and keep the Rust HLE engines for the rest. On these measurements only PNO Core1 (x1.6 over, closest) could ever fit; ORG/PNO Core2 are x7 to x8 over.
