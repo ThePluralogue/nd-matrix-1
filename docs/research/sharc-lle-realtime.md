@@ -114,7 +114,7 @@ v3 raised the covered share to 97% of the steps but dispatch grew from 1.2% to 9
 | Core | Result here | Smallest fix |
 |---|---|---|
 | ORG Core1 | boots under the `org` preset but no pass returns to the poll loop (hits the 2 000 000-step cap, idle false) | it is a Core1 section: start it by the P4I interrupt like PNO Core1 (`irq`), with its own idle pc; both need to be read from its listing (not derived here) |
-| FX Core1, FX Core2 | the `org`/`pno` presets fault at boot | `FX1`/`FX2` in `runner/fx_run.rs` already hold entry `0x1211E3`, idle pcs `0x12128B` / `0x12125B`, triggers, devs and the Core1 start by `irq (15, 0x41)`: add `fx1`/`fx2` presets built from them, and call `FxPeer::before_pass` (the Core1 hand-over counter Core2 waits for) as a per-tick hook in `pass_sched` |
+| FX Core1, FX Core2 | the `org`/`pno` presets fault at boot (**fixed in `ns4-lle4`: presets `fx1`/`fx2` and `FxDrive` in `PassJob`, [sharc-audio-bus](sharc-audio-bus.md)**) | `FX1`/`FX2` in `runner/fx_run.rs` already hold entry `0x1211E3`, idle pcs `0x12128B` / `0x12125B`, triggers, devs and the Core1 start by `irq (15, 0x41)`: add `fx1`/`fx2` presets built from them, and call `FxPeer::before_pass` (the Core1 hand-over counter Core2 waits for) as a per-tick hook in `pass_sched` |
 | SY1SY2, SMP | not poll-loop passes | a `PassJob` kind that runs the `live_sy` / `live_smp` interrupt pass (`SyModel`) instead of `lean_pass`; presets exist (`sy_preset`, `smp_preset`) |
 
 ### Total CPU across the eight cores
@@ -247,7 +247,7 @@ ORG Core2 exact: x7.2 (merged prototype) to x3.5, bit-exact. Fast-f32 tier x2.9.
 
 ## Follow-ups
 
-- Presets and message scripts for ORG Core1 and FX Core1/Core2; SY1SY2/SMP as ISR-driven jobs in `pass_sched`, so the 300-pass benchmark covers all five chips.
+- Presets and message scripts for ORG Core1 (FX Core1/Core2 done in `ns4-lle4`); SY1SY2/SMP as ISR-driven jobs in `pass_sched`, so the 300-pass benchmark covers all five chips.
 - AOT module for PNO Core2 (needs its own `--aot-pcs` run), then re-measure the 3-core tick; `Pe` support for the 842 ops per pass that still use `exec_compute_op`.
 - Fast-vs-Exact error in dB on a real pass for the current module build (`sharc_jit_diff --aot-audio` with the approximate module compiled first).
 - Listening/null test for the fast-f32 tier, only if the compute share of the pass becomes native.

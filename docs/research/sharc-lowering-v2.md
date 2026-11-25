@@ -1,7 +1,7 @@
 # SHARC lowering v2: design note (IR, native locals, superblocks)
 
 Checked: 2026-11-24
-Sources: [sharc-lle-realtime](sharc-lle-realtime.md) (measurements, profile, bounded experiment, D247), `crates/nord-sharc/src/core/aot_{whole,lower,emit,mem,pe,glue,hot}.rs`, `runner/pass_sched.rs`, `lle_sharc_bench`; bean `ns4-lle3`.
+Sources: [sharc-lle-realtime](sharc-lle-realtime.md) (measurements, profile, bounded experiment, D248), `crates/nord-sharc/src/core/aot_{whole,lower,emit,mem,pe,glue,hot}.rs`, `runner/pass_sched.rs`, `lle_sharc_bench`; bean `ns4-lle3`.
 Question: what lowering design can bring ORG Core2 (6 280 steps per pass), then PNO Core2 and the other cores, to at most x2 of the 46.08 us budget in exact mode, using everything the measurements say?
 
 Tags follow `.agents/rules/provenance-in-code.md`. Cycle figures use ~4.5 GHz (Ryzen 9 5900XT boost, ASSUMED; the 3.3 GHz base clock would make every budget 1.4x tighter).
