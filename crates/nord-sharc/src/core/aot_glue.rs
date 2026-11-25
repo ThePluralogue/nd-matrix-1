@@ -234,4 +234,115 @@ mod tests {
             "wrong next pc bails"
         );
     }
+
+    /// Everything [`Core::aot_tail`] and the tail of [`Core::step`] may touch.
+    fn tail_state(
+        c: &Core,
+    ) -> (
+        u32,
+        u64,
+        usize,
+        Option<u32>,
+        Option<(u8, u32)>,
+        u8,
+        u32,
+        u32,
+    ) {
+        (
+            c.pc,
+            c.steps,
+            c.loops.len(),
+            c.loops.last().map(|f| f.remaining),
+            c.pending.map(|p| (p.slots, p.target)),
+            c.cb_wrap.get(),
+            c.irq.window_len,
+            c.sys.stky[0],
+        )
+    }
+
+    /// Runs one NOP through `step` on one core and through `aot_tail` on a twin, after the same
+    /// `setup`, and returns both end states.
+    fn nop_both_ways(setup: impl Fn(&mut Core)) -> (Core, Core) {
+        nop_both_ways_len(setup, 1)
+    }
+
+    /// [`nop_both_ways`] for a NOP that is `len` parcels long (an open window fetches in ISA order).
+    fn nop_both_ways_len(setup: impl Fn(&mut Core), len: u32) -> (Core, Core) {
+        let mut a = core_with(&[0x0001u16; 8]);
+        let mut b = core_with(&[0x0001u16; 8]);
+        setup(&mut a);
+        setup(&mut b);
+        a.step().unwrap();
+        let (pc, kind) = (b.pc, b.fetch(b.pc).kind());
+        b.aot_tail(pc, kind, pc + len);
+        (a, b)
+    }
+
+    #[test]
+    fn the_tail_matches_step_with_nothing_active() {
+        let (a, b) = nop_both_ways(|_| {});
+        assert_eq!(tail_state(&a), tail_state(&b));
+        assert_eq!((b.pc, b.steps), (0x12_0001, 1));
+    }
+
+    #[test]
+    fn the_tail_matches_step_at_a_loop_end_that_repeats_and_that_ends() {
+        for remaining in [2, 1] {
+            let (a, b) = nop_both_ways(|c| {
+                c.loops.push(crate::core::types::LoopFrame {
+                    start: 0x12_0000,
+                    end: 0x12_0000,
+                    remaining,
+                    ..Default::default()
+                });
+            });
+            assert_eq!(tail_state(&a), tail_state(&b), "remaining {remaining}");
+            assert_eq!(b.loops.len(), usize::from(remaining > 1));
+        }
+    }
+
+    #[test]
+    fn the_tail_matches_step_with_a_pending_delayed_branch() {
+        for (slots, call) in [(2, false), (1, false), (1, true)] {
+            let (a, b) = nop_both_ways(|c| {
+                c.pending = Some(crate::core::types::Pending {
+                    slots,
+                    target: 0x12_0005,
+                    call,
+                });
+            });
+            assert_eq!(tail_state(&a), tail_state(&b), "slots {slots} call {call}");
+        }
+        let (_, b) = nop_both_ways(|c| {
+            c.pending = Some(crate::core::types::Pending {
+                slots: 1,
+                target: 0x12_0005,
+                call: false,
+            });
+        });
+        assert_eq!(b.pc, 0x12_0005, "the branch lands after its last slot");
+    }
+
+    #[test]
+    fn the_tail_matches_step_with_a_circular_buffer_wrap_latched() {
+        let (a, b) = nop_both_ways(|c| c.cb_wrap.set(1));
+        assert_eq!(tail_state(&a), tail_state(&b));
+        assert_eq!(b.cb_wrap.get(), 0, "the wrap is consumed");
+        assert_ne!(b.sys.stky[0], 0, "and its sticky bit set");
+    }
+
+    #[test]
+    fn the_tail_matches_step_with_an_open_interrupt_window() {
+        for (lo, len) in [(0x12_0000, 1), (0x12_0000, 4)] {
+            let (a, b) = nop_both_ways_len(
+                |c| {
+                    c.irq.window_lo = lo;
+                    c.irq.window_len = len;
+                },
+                3,
+            );
+            assert_eq!(tail_state(&a), tail_state(&b), "window {len}");
+            assert_eq!(b.irq.window_len, if len == 1 { 0 } else { len });
+        }
+    }
 }

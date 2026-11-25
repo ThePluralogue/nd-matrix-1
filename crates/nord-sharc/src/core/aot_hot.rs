@@ -429,4 +429,25 @@ mod tests {
             (3, 30, 30, 2, 1)
         );
     }
+
+    #[test]
+    fn loop_end_blocks_is_a_truth_table_on_the_block_range_and_its_exit() {
+        let mut b = nop_block(100, 2); // start 100, last 101
+        for (end, dynamic, blocks) in [
+            (99, false, false),
+            (100, false, true),
+            (100, true, true),
+            (101, false, true),
+            (101, true, false),
+            (102, false, false),
+            (102, true, false),
+        ] {
+            b.dynamic = dynamic;
+            assert_eq!(
+                Core::loop_end_blocks(&b, end),
+                blocks,
+                "end {end} dynamic {dynamic}"
+            );
+        }
+    }
 }
