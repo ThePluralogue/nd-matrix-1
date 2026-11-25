@@ -75,7 +75,7 @@ APPRUN_SCRIPT = """#!/bin/sh
 set -eu
 HERE="$(dirname "$(readlink -f "$0")")"
 export PATH="$HERE/usr/bin:$PATH"
-# Bundled xkbcommon libraries (winit loads them at start-up; D247).
+# Bundled xkbcommon libraries (winit loads them at start-up; D248).
 export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 case "${1:-}" in
@@ -463,7 +463,7 @@ def stage_linux_appdir(
     """Create a Linux AppDir for `appimagetool`; return `(appdir, appimage_path)`.
 
     With `lib_dirs` the shared libraries of `release_bundle_libs.BUNDLED_LIBS` and their
-    copyright files are copied in (D247); `None` skips that, for staging tests.
+    copyright files are copied in (D248); `None` skips that, for staging tests.
     """
     platform = PLATFORMS["x86_64-unknown-linux-gnu"]
     raw_stage = work_dir / "linux-raw-appimage"

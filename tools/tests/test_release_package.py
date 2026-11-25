@@ -310,7 +310,7 @@ def test_release_workflow_downloads_the_pinned_runtime():
 
 
 def test_release_workflow_builds_linux_on_the_oldest_supported_lts_and_installs_xkb():
-    """glibc: the AppImage catalog test runs on the oldest Ubuntu LTS (D247)."""
+    """glibc: the AppImage catalog test runs on the oldest Ubuntu LTS (D248)."""
     workflow = (rp.ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "os: ubuntu-22.04" in workflow
     assert "os: ubuntu-24.04\n            target: x86_64-unknown-linux-gnu" not in workflow

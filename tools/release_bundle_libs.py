@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bundle the few shared libraries the Linux AppImage cannot rely on the host to have (D247).
+"""Bundle the few shared libraries the Linux AppImage cannot rely on the host to have (D248).
 
 `winit` (egui) loads `libxkbcommon.so.0` and `libxkbcommon-x11.so.0` with `dlopen` at start-up.
 A minimal host lacks them and the app exits before it shows a window (the AppImage catalog test

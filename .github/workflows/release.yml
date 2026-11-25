@@ -100,7 +100,7 @@ jobs:
       matrix:
         include:
           # Oldest Ubuntu LTS in standard support: glibc is only as old as the build system, and
-          # the AppImage catalog test runs on that LTS (D247). Bump when it leaves support.
+          # the AppImage catalog test runs on that LTS (D248). Bump when it leaves support.
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             exe: ''

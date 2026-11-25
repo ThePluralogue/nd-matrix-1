@@ -197,7 +197,7 @@ Dry run or release: 3 build jobs (Linux, Windows, macOS) plus two small ubuntu j
 
 ## AppImage on a bare host
 
-The catalog (appimage.github.io) runs the AppImage on the oldest supported Ubuntu LTS, with no network and no extra packages ([D247](DECISIONS.md#d247-the-linux-appimage-is-built-on-the-oldest-supported-lts-bundles-the-xkbcommon-libraries-and-follows-the-catalog-file-name)). That is why the Linux job builds on `ubuntu-22.04` (glibc is only as old as the build system) and bundles `libxkbcommon`, `libxkbcommon-x11` and `libxcb-xkb` with their notices. Before a release, check on a bare Ubuntu 22.04 (container or VM, with `xvfb`):
+The catalog (appimage.github.io) runs the AppImage on the oldest supported Ubuntu LTS, with no network and no extra packages ([D248](DECISIONS.md#d248-the-linux-appimage-is-built-on-the-oldest-supported-lts-bundles-the-xkbcommon-libraries-and-follows-the-catalog-file-name)). That is why the Linux job builds on `ubuntu-22.04` (glibc is only as old as the build system) and bundles `libxkbcommon`, `libxkbcommon-x11` and `libxcb-xkb` with their notices. Before a release, check on a bare Ubuntu 22.04 (container or VM, with `xvfb`):
 
 ```bash
 chmod +x nd-matrix-1-X.Y.Z-x86_64.AppImage
