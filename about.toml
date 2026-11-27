@@ -1,0 +1,38 @@
+# cargo-about configuration (D238). Generates THIRD_PARTY_LICENSES.html for releases:
+#   cargo about generate --workspace --all-features -c about.toml about.hbs -o THIRD_PARTY_LICENSES.html
+# CI (`licenses` job, .github/workflows/ci.yml) runs the same command and fails when a
+# crate carries a license that is not in `accepted`. Add an SPDX id here only after
+# checking that its terms allow redistribution in binaries under our PolyForm
+# Noncommercial 1.0.0 project license and that tools/check_licenses.py still passes
+# (no copyleft). See docs/LEGAL.md section 4.
+
+# SPDX ids permitted anywhere in the shipped dependency tree.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+]
+
+# Every target we ship; platform-specific crates (windows-sys, objc2, ...) are included.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+]
+
+# Dev-dependencies are never shipped. Build-dependencies run at build time only but
+# often embed code (bindings, tables), so they stay in.
+ignore-dev-dependencies = true
+ignore-build-dependencies = false
+
+# Our own crates (publish = false) are covered by the top-level LICENSE.
+private = { ignore = true }

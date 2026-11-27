@@ -150,6 +150,10 @@ mod tests_fw_lp24_chain;
 #[cfg(test)]
 mod tests_fw_lp24_golden;
 #[cfg(test)]
+mod tests_fw_lp24_mapping;
+#[cfg(test)]
+mod tests_fw_lp24_sweep;
+#[cfg(test)]
 mod tests_fw_map;
 #[cfg(test)]
 mod tests_fw_mod1_chain;
@@ -303,6 +307,10 @@ pub struct LayerFxChain {
     pub eq_bass_db: f32,
     pub eq_mid_db: f32,
     pub eq_mid_freq_hz: f32,
+    /// Exact `kAmpMidFreq` index `0..=127` of the program (or morph) that set `eq_mid_freq_hz`. The Hz
+    /// table repeats display values (`EQ_FREQ_HZ[65] == [66]`), so Hz alone loses up to one step; the
+    /// `LP24` / `HP24` port uses the hint while `EQ_FREQ_HZ[hint] == eq_mid_freq_hz` (D234).
+    pub eq_mid_freq_index: Option<u8>,
     pub eq_treble_db: f32,
     pub comp_enabled: bool,
     pub comp_amount: f32,
@@ -458,6 +466,7 @@ impl LayerFxChain {
             eq_bass_db: 0.0,
             eq_mid_db: 0.0,
             eq_mid_freq_hz: 1000.0,
+            eq_mid_freq_index: None,
             eq_treble_db: 0.0,
             comp_enabled: false,
             comp_amount: 0.0,
@@ -574,7 +583,9 @@ impl LayerFxChain {
             self.mod2_amount = m.mod2_amount.evaluate(ctrl);
         }
         if morph_active(&m.eq_mid_freq) {
-            self.eq_mid_freq_hz = eq_freq_hz_from_norm(m.eq_mid_freq.evaluate(ctrl));
+            let norm = m.eq_mid_freq.evaluate(ctrl);
+            self.eq_mid_freq_hz = eq_freq_hz_from_norm(norm);
+            self.eq_mid_freq_index = Some((norm.clamp(0.0, 1.0) * 127.0).round() as u8);
         }
         if morph_active(&m.amp_drive) {
             self.drive_amount = m.amp_drive.evaluate(ctrl);

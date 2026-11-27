@@ -118,14 +118,25 @@ impl Core {
                         .collect::<Vec<_>>()
                         .join(" ")
                 };
-                self.trace_log.push(format!(
+                let mut line = format!(
                     "pc {:x} R {} S {} I {} M {}",
                     self.pc,
                     hex(&self.r),
                     hex(&self.s),
                     hex(&self.i),
                     hex(&self.m)
-                ));
+                );
+                let (base, count) = self.trace_dm;
+                if count > 0 {
+                    let words: Vec<String> = (0..count)
+                        .map(|k| {
+                            self.dm_peek(base.wrapping_add(k))
+                                .map_or_else(|| "-".to_string(), |w| format!("{w:x}"))
+                        })
+                        .collect();
+                    line.push_str(&format!(" DM {base:x} {}", words.join(" ")));
+                }
+                self.trace_log.push(line);
             }
         }
     }
@@ -185,6 +196,15 @@ impl Core {
         } else {
             self.fetch_and_cache(pc, isa)
         };
+        self.exec_cached(&c)
+    }
+
+    /// Executes the cached instruction `c` and finishes the step: the pc, the step count, the
+    /// circular-buffer overflow latch and the interrupt window. [`Core::step`] runs it on a
+    /// decode-cache entry; the AOT blocks (`aot_whole.rs`) call it with an entry built from
+    /// constants so that the decoded-op `match` and the field extractions fold away.
+    #[inline(always)]
+    pub(super) fn exec_cached(&mut self, c: &CachedInsn) -> Result<(), Fault> {
         let mut next = c.next_pc;
         let simd = self.simd();
         let make_decoded = |core: &Core, c: &CachedInsn| -> Decoded {
@@ -202,45 +222,45 @@ impl Core {
             DecodedOp::ComputeCond { cond, op } => {
                 let cond_ok = cond == 31 || self.cond(u64::from(cond));
                 let cond_y = simd && (cond == 31 || self.cond_for(true, u64::from(cond)));
-                self.run_compute_op(&c, cond_ok, cond_y, op)?;
+                self.run_compute_op(c, cond_ok, cond_y, op)?;
             }
             DecodedOp::ComputeBoth { op } => {
-                self.run_compute_op(&c, true, simd, op)?;
+                self.run_compute_op(c, true, simd, op)?;
             }
             DecodedOp::ModifyImm => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 self.exec_modify_imm(&d);
             }
             DecodedOp::StackOp => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 self.exec_stack_op(&d);
             }
             DecodedOp::DoUntil => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 self.exec_do_until(&d, next)?;
             }
             DecodedOp::Type25 => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 next = self.exec_type25(&d, next)?;
             }
             DecodedOp::ShiftImm => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 self.exec_shift_imm(&d)?;
             }
             DecodedOp::ShiftMove => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 self.exec_shift_move(&d)?;
             }
             DecodedOp::DualMove(dm) => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 self.exec_dual_move_op(&d, dm)?;
             }
             DecodedOp::Flow(fl) => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 next = self.exec_flow_op(&d, fl, next)?;
             }
             DecodedOp::Move(mv) => {
-                let d = make_decoded(self, &c);
+                let d = make_decoded(self, c);
                 self.exec_move_op(&d, mv)?;
             }
             DecodedOp::Unimplemented => return Err(self.fault(c.pc, &c.insn)),
@@ -341,6 +361,34 @@ mod tests {
         .unwrap();
         assert_eq!((c.astat(0) >> 6) & 1, 0);
         assert_eq!((c.astat(1) >> 6) & 1, 1);
+    }
+
+    #[test]
+    fn trace_dm_appends_data_words_read_without_side_effects() {
+        let mut c = core_with(&[0x0001]);
+        c.dm_write(0xB_135C, 0x3F00_0000).unwrap();
+        c.dm_write(0xB_135D, 0x1).unwrap();
+        let start = c.pc;
+        c.trace = Some((start, start, 10));
+        c.trace_dm = (0xB_135C, 3);
+        c.rwatch = 0xB_135C;
+        c.rwatch_on = true;
+        c.step().unwrap();
+        assert!(
+            c.trace_log[0].ends_with(" DM b135c 3f000000 1 0"),
+            "{}",
+            c.trace_log[0]
+        );
+        assert!(c.rwatch_hits.is_empty(), "the peek is not a load");
+        c.trace_dm = (0x4000_0000, 1);
+        c.trace_log.clear();
+        c.pc = start;
+        c.step().unwrap();
+        assert!(
+            c.trace_log[0].ends_with(" DM 40000000 -"),
+            "{}",
+            c.trace_log[0]
+        );
     }
 
     #[test]

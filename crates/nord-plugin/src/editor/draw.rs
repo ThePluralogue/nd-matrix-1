@@ -12,7 +12,9 @@ use super::index::ParamIndex;
 use super::notes::NoteSender;
 use super::readback::sync_panel_from_params;
 use super::sink::{pump, ParamSink};
-use super::top_bar::{self, BarClick, BAR_HEIGHT};
+#[cfg(test)]
+use super::top_bar::BAR_HEIGHT;
+use super::top_bar::{self, BarClick};
 use super::write::ParamWriter;
 use crate::loader::LoadSender;
 use crossbeam_channel::Receiver;
@@ -21,6 +23,7 @@ use nih_plug_egui::egui::{
 };
 use nih_plug_egui::resizable_window::paint_resize_corner;
 use nih_plug_egui::EguiState;
+use nord_core::engine::TelemetryCell;
 use nord_gui::audio::{AudioCommand, AudioHandle};
 use nord_gui::debug_dialog::{show_debug_dialog, DebugDialogState, DebugTab};
 use nord_gui::firmware_panel::FirmwarePanelState;
@@ -28,6 +31,7 @@ use nord_gui::library::BackupLibraryState;
 use nord_gui::os_update_panel::OsUpdatePanel;
 use nord_gui::panel::{render_stage4_panel, Stage4PanelState};
 use nord_gui::style::CHASSIS_DARK;
+use nord_gui::telemetry::TelemetryHandle;
 use std::sync::Arc;
 
 /// Baked plate size in pixels (`crates/nord-gui/assets/baked/panel_layout.json` `chassis_px`).
@@ -61,12 +65,29 @@ pub struct EditorState {
     pub os_update: Option<OsUpdatePanel>,
     /// The Studio Settings dialog (DEBUG / HELP / OPEN .NS4B), an embedded window in the editor.
     pub debug_dialog: DebugDialogState,
+    /// Text size option (issue #592), loaded once when the editor opens; saved on every change.
+    pub text_scale: nord_gui::text_scale::TextScale,
+    /// Where the text size is saved (`None`: no config directory, or a test).
+    pub config_path: Option<std::path::PathBuf>,
+    /// Text size the window was last sized for (`None`: not yet, so the first frame sizes it).
+    pub sized_for: Option<nord_gui::text_scale::TextScale>,
 }
 
 impl EditorState {
     /// The editor of a plugin in a host: its Library tab opens on the user's saved library.
-    pub fn new(index: Arc<ParamIndex>, notes: NoteSender, loads: LoadSender) -> Self {
-        Self::with_library(index, notes, loads, crate::auto_library::saved_library())
+    pub fn new(
+        index: Arc<ParamIndex>,
+        notes: NoteSender,
+        loads: LoadSender,
+        telemetry: Arc<TelemetryCell>,
+    ) -> Self {
+        Self::with_library(
+            index,
+            notes,
+            loads,
+            telemetry,
+            crate::auto_library::saved_library(),
+        )
     }
 
     /// Like [`Self::new`] with the library to open given (tests and tools: `None` for an empty
@@ -75,10 +96,17 @@ impl EditorState {
         index: Arc<ParamIndex>,
         notes: NoteSender,
         loads: LoadSender,
+        telemetry: Arc<TelemetryCell>,
         library: Option<std::path::PathBuf>,
     ) -> Self {
-        let (handle, rx) = AudioHandle::new();
+        let (mut handle, rx) = AudioHandle::new();
+        // The plugin's engine publishes into this cell: the panel LEDs and lit keys read it.
+        handle.telemetry = TelemetryHandle::from_cell(telemetry);
         let coverage = super::coverage::classify(&index);
+        // Tests never read the developer's saved settings.
+        let config_path = (!cfg!(test))
+            .then(nord_core::user_config::default_config_path)
+            .flatten();
         Self {
             panel: Stage4PanelState {
                 use_baked_plate: true,
@@ -96,6 +124,16 @@ impl EditorState {
             firmware: FirmwarePanelState::new(Default::default()),
             os_update: None,
             debug_dialog: DebugDialogState::default(),
+            text_scale: nord_gui::text_scale::load(config_path.as_deref()),
+            config_path,
+            sized_for: None,
+        }
+    }
+
+    /// Remember the text size for the next time an editor opens.
+    pub fn save_text_scale(&self) {
+        if let Err(e) = nord_gui::text_scale::save(self.config_path.as_deref(), self.text_scale) {
+            nih_plug::nih_log!("Could not save the text size: {e}");
         }
     }
 
@@ -163,10 +201,10 @@ fn show_dialogs(ctx: &Context, st: &mut EditorState) {
 
 /// Window size for a plate `width` wide: the plate aspect plus the top bar.
 pub fn size_for_width(width: f32) -> (u32, u32) {
-    let w = width.max(MIN_WIDTH);
+    let w = width.max(nord_gui::text_scale::editor_min_width(MIN_WIDTH));
     (
         w.round() as u32,
-        (w * PLATE_H / PLATE_W + BAR_HEIGHT).round() as u32,
+        (w * PLATE_H / PLATE_W + nord_gui::text_scale::bar_height()).round() as u32,
     )
 }
 
@@ -194,6 +232,30 @@ fn resize_handle(ctx: &Context, egui_state: &EguiState, avail: Rect) {
         });
 }
 
+/// Lights the keybed keys the engine holds, so host MIDI shows on screen. The standalone sets
+/// these from its MIDI port; the plugin has no port, only the engine's telemetry.
+pub(super) fn light_held_keys(handle: &AudioHandle, panel: &mut Stage4PanelState) {
+    let snap = handle.telemetry().latest();
+    for (note, lit) in panel.midi_active_keys.iter_mut().enumerate() {
+        *lit = snap.get().is_some_and(|t| t.note_held(note as u8));
+    }
+}
+
+/// The bar height and the smallest width follow the text size, so a new size (or the first frame
+/// at a saved size) asks the host for the matching window: same width, aspect and bar height of
+/// the new size, never narrower than the bar needs. The host may refuse.
+fn size_window_for_text(egui_state: &EguiState, st: &mut EditorState) {
+    if st.sized_for == Some(st.text_scale) {
+        return;
+    }
+    st.sized_for = Some(st.text_scale);
+    let (w, h) = egui_state.size();
+    let target = size_for_width(w as f32);
+    if target != (w, h) {
+        egui_state.set_requested_size(target);
+    }
+}
+
 /// Draw one frame of the editor and forward the panel's edits to `writer`.
 pub fn draw_editor<W: ParamWriter>(
     ctx: &Context,
@@ -202,6 +264,12 @@ pub fn draw_editor<W: ParamWriter>(
     writer: W,
 ) {
     sync_panel_from_params(&st.index, &mut st.panel);
+    light_held_keys(&st.handle, &mut st.panel);
+    if nord_gui::text_scale::handle_keys(ctx, &mut st.text_scale) {
+        st.save_text_scale();
+    }
+    nord_gui::text_scale::apply(ctx, st.text_scale, &mut st.panel.baked_zoom);
+    size_window_for_text(egui_state, st);
 
     // The shared panel would otherwise drive egui's zoom itself; the editor shows the whole plate.
     st.panel.view.host_scaled = true;
@@ -213,12 +281,22 @@ pub fn draw_editor<W: ParamWriter>(
 
     let bar_frame = egui::Frame::NONE.fill(CHASSIS_DARK);
     TopBottomPanel::top("nd_matrix_bar")
-        .exact_height(BAR_HEIGHT)
+        .exact_height(nord_gui::text_scale::bar_height())
         .show_separator_line(false)
         .frame(bar_frame)
         .show(ctx, |ui| {
-            if let Some(click) = top_bar::show(ui, st.debug_dialog.open) {
+            let before = st.text_scale;
+            let click = top_bar::show(
+                ui,
+                st.debug_dialog.open,
+                &mut st.panel.baked_zoom,
+                &mut st.text_scale,
+            );
+            if let Some(click) = click {
                 st.open_for(click);
+            }
+            if st.text_scale != before {
+                st.save_text_scale();
             }
         });
 
@@ -261,9 +339,31 @@ mod tests {
         std::mem::forget(load_rx); // keep the queue connected; these tests do not read it
         (
             params,
-            EditorState::with_library(index, tx, load_tx, None),
+            EditorState::with_library(index, tx, load_tx, Default::default(), None),
             rx,
         )
+    }
+
+    #[test]
+    fn keys_the_engine_holds_light_up_in_the_editor() {
+        let cell: Arc<TelemetryCell> = Default::default();
+        let (_params, mut st, _rx) = state();
+        st.handle.telemetry = TelemetryHandle::from_cell(cell.clone());
+        let mut engine = nord_core::engine::Stage4Engine::new(48_000.0);
+        engine.attach_telemetry(cell);
+
+        light_held_keys(&st.handle, &mut st.panel);
+        assert!(!st.panel.midi_active_keys[60], "nothing published yet");
+
+        engine.handle_midi(nord_core::midi::MidiEvent::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 100,
+        });
+        engine.publish_telemetry();
+        light_held_keys(&st.handle, &mut st.panel);
+        assert!(st.panel.midi_active_keys[60]);
+        assert!(!st.panel.midi_active_keys[61]);
     }
 
     fn input(size: Vec2, events: Vec<egui::Event>) -> egui::RawInput {
@@ -505,6 +605,89 @@ mod tests {
                 .any(|e| matches!(e, nord_core::midi::MidiEvent::NoteOn { note: 60, .. })),
             "{played:?}"
         );
+    }
+
+    /// Window point inside bay `name` near its top-left corner, where the plate has no control.
+    fn bay_corner_point(ctx: &Context, name: &str) -> Pos2 {
+        let plate: Rect = ctx
+            .data(|d| d.get_temp(Id::new("ns4_baked_plate_rect")))
+            .expect("plate rect");
+        let mut p = Pos2::ZERO;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let l = BakedPanelAssets::get_or_load(ctx).layout;
+            let b = &l.bays[name];
+            p = Pos2::new(
+                plate.left() + (b.x + 0.004) * plate.width(),
+                plate.top() + (b.y + 0.004) * plate.height(),
+            );
+        });
+        p
+    }
+
+    /// Hovering empty plate of a bay marks it, and a click zooms the editor to that bay (the
+    /// user reported zoom missing in the VST). A second click goes back to the whole panel.
+    #[test]
+    fn hovering_then_clicking_a_bay_zooms_the_editor_to_it() {
+        let (_params, mut st, _rx) = state();
+        let egui_state = EguiState::from_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1);
+        let ctx = Context::default();
+        let size = default_size_vec();
+        for _ in 0..3 {
+            frame_with(&ctx, &egui_state, &mut st, size, vec![]);
+        }
+        let pos = bay_corner_point(&ctx, "bay-organ");
+        let moved = vec![egui::Event::PointerMoved(pos)];
+        frame_with(&ctx, &egui_state, &mut st, size, moved);
+        frame_with(&ctx, &egui_state, &mut st, size, vec![]);
+        assert_eq!(st.panel.baked_zoom.hover, Some(nord_panel::Section::Organ));
+        click_at(&ctx, &egui_state, &mut st, size, pos);
+        assert!(st.panel.baked_zoom.zoom > 1.5, "{:?}", st.panel.baked_zoom);
+        assert_eq!(
+            st.panel.baked_zoom.section,
+            Some(nord_panel::Section::Organ)
+        );
+    }
+
+    /// The digit keys zoom the editor too (when the host gives it the keyboard).
+    #[test]
+    fn the_digit_keys_zoom_the_editor_and_escape_fits() {
+        let (_params, mut st, _rx) = state();
+        let egui_state = EguiState::from_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1);
+        let ctx = Context::default();
+        let size = default_size_vec();
+        let key = |k, pressed| egui::Event::Key {
+            key: k,
+            physical_key: Some(k),
+            pressed,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        for _ in 0..3 {
+            frame_with(&ctx, &egui_state, &mut st, size, vec![]);
+        }
+        frame_with(
+            &ctx,
+            &egui_state,
+            &mut st,
+            size,
+            vec![key(egui::Key::Num2, true)],
+        );
+        frame_with(
+            &ctx,
+            &egui_state,
+            &mut st,
+            size,
+            vec![key(egui::Key::Num2, false)],
+        );
+        assert!(st.panel.baked_zoom.zoom > 1.5, "{:?}", st.panel.baked_zoom);
+        frame_with(
+            &ctx,
+            &egui_state,
+            &mut st,
+            size,
+            vec![key(egui::Key::Escape, true)],
+        );
+        assert!((st.panel.baked_zoom.zoom - 1.0).abs() < 1e-4);
     }
 
     #[test]

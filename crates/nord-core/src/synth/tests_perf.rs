@@ -10,7 +10,58 @@ fn layer() -> SynthLayer {
     s.attack_sec = 0.001;
     s.sustain_level = 1.0;
     s.release_sec = 0.05;
+    // These tests cover the legacy half-step gate; the firmware 2/3 duty has its own test.
+    s.arp_firmware_gate = false;
     s
+}
+
+#[test]
+fn firmware_gate_mode_is_open_two_thirds_of_a_step() {
+    // ARM+DSP trace of A:17 Dual Gates: gate float 1.0 for 84 ms of each 125 ms step (0.672).
+    let mut s = layer();
+    s.arp_firmware_gate = true;
+    s.arp_mode = ArpMode::Gate;
+    s.arp_rate_bpm = 480.0; // step = 3000 samples
+    s.perf.gate_env = 1.0;
+    s.note_on(57, 110);
+    let mut open = 0usize;
+    for i in 0..3000 * 8 {
+        s.render_frame();
+        if i >= 3000 && s.perf.gate_level > 0.5 {
+            open += 1;
+        }
+    }
+    let duty = open as f32 / (3000.0 * 7.0);
+    assert!((duty - 2.0 / 3.0).abs() < 0.02, "duty {duty}");
+}
+
+/// Gate level at every frame of a firmware Gate-mode run (step = 3000 samples).
+fn firmware_gate_levels(env: f32) -> Vec<f32> {
+    let mut s = layer();
+    s.arp_firmware_gate = true;
+    s.arp_mode = ArpMode::Gate;
+    s.arp_rate_bpm = 480.0;
+    s.perf.gate_env = env;
+    s.note_on(57, 110);
+    (0..3000 * 4)
+        .map(|_| {
+            s.render_frame();
+            s.perf.gate_level
+        })
+        .collect()
+}
+
+#[test]
+fn firmware_gate_edge_is_a_fixed_one_pole_independent_of_env() {
+    // SHARC replay: 0.005 per pass, tau 9.19 ms (441 samples at 48 kHz); ENV never reaches the DSP.
+    assert_eq!(firmware_gate_levels(0.0), firmware_gate_levels(1.0));
+    let lv = firmware_gate_levels(0.5);
+    let close = 3000 * 2 + 2000; // 2/3 of the third step
+    let drop = lv[close + 442] / lv[close + 1];
+    assert!(
+        (drop - (-1.0f32).exp()).abs() < 0.02,
+        "fall over 1 tau: {drop}"
+    );
 }
 
 fn window_energy(frames: &[[f32; 2]], from: usize, to: usize) -> f32 {
@@ -305,4 +356,43 @@ fn defaults_render_like_a_layer_without_the_perf_features() {
     a.note_off(60);
     b.note_off(60);
     assert_eq!(render_n(&mut a, 6000), render_n(&mut b, 6000));
+}
+
+#[test]
+fn firmware_gate_mode_pattern_steps_rest_two_thirds_and_full() {
+    // Custom pattern [rest, E, q]: closed, 2/3 open, fully open (`firmware_gate_fraction`).
+    let mut s = layer();
+    s.arp_firmware_gate = true;
+    s.arp_mode = ArpMode::Gate;
+    s.arp_rate_bpm = 480.0; // step = 3000 samples
+    s.perf.gate_env = 1.0;
+    s.perf.pattern_on = true;
+    s.set_pattern_length(3);
+    for (i, g) in [0u8, 4, 8].into_iter().enumerate() {
+        s.set_step_gate(i, g);
+    }
+    s.perf.pattern_custom = true;
+    s.note_on(57, 110);
+    let mut open = [0usize; 3];
+    for i in 0..3000 * 4 {
+        s.render_frame();
+        // Step 0 uses the initial length; steps 1.. walk the pattern from its first entry.
+        let step = i / 3000;
+        if step >= 1 && s.perf.gate_level > 0.5 {
+            open[(step - 1) % 3] += 1;
+        }
+    }
+    assert!(open[0] < 30, "rest step open {} frames", open[0]);
+    assert!(
+        open[1].abs_diff(2000) < 60,
+        "E step open {} frames",
+        open[1]
+    );
+    // Fully open all step, but the 9.19 ms rise from the E step's closed tail (level ~0.1) only
+    // crosses 0.5 after 441 * ln(1.8) = 259 samples: 3000 - 259 = 2741.
+    assert!(
+        open[2].abs_diff(2741) < 60,
+        "q step open {} frames",
+        open[2]
+    );
 }

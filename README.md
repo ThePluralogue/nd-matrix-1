@@ -43,9 +43,9 @@ Read the full specification suite in [`docs/`](docs/README.md):
 
 ## Download
 
-**Playing the GUI:** `nd-matrix-1` plays from a MIDI keyboard (first MIDI port, velocity passed through unchanged), the mouse (velocity 88) or the computer keyboard (`A S D F G H J K L ; '` white keys, `W E T Y U O P` black keys, `Z` / `X` octave, `C` / `V` velocity, `Space` sustain; see [GUI testing](docs/gui-testing.md)).
+**Playing the GUI:** `nd-matrix-1` plays from a MIDI keyboard (first MIDI port, velocity passed through unchanged), the mouse (velocity 88) or the computer keyboard (`A S D F G H J K L ; '` white keys, `W E T Y U O P` black keys, `Z` / `X` octave, `C` / `V` velocity, `Space` sustain; see [GUI testing](docs/gui-testing.md)). **Small text?** Press `Ctrl +` (or click `A+` in the bar) for larger text, 100 to 200 %, saved for next time (menus, dialogs and the panel picture grow together; the panel then needs panning). Or zoom the panel with `1`-`5` (a section), `0` / `Esc` (whole panel), `+` / `-` or the bar pills; a two-row layout for bigger print without panning is planned (issue #592); all commands are in [Commands and zoom](docs/guides/commands.md) and on the `? HELP` screen.
 
-Tagged releases ship `ns4` (CLI), `nd-matrix-1` (GUI), `nord-plugin-standalone`, and the CLAP + VST3 DAW plugins in multiple formats (all with `.sha256` checksums):
+Tagged releases ship `ns4` (CLI), `nd-matrix-1` (GUI), `nd-matrix-1-standalone`, and the CLAP + VST3 DAW plugins in multiple formats (all with `.sha256` checksums):
 - **Windows (x86_64):** `-setup.exe` installer (with selectable GUI, CLI, VST3 & CLAP components) and portable `.zip`
 - **macOS (arm64):** `.pkg` installer (selectable app, VST3 & CLAP), `.dmg` disk image, and portable `.tar.gz`
 - **Linux (x86_64):** `.deb` package, portable `.AppImage` (run with `--install-plugins` to copy CLAP/VST3 to `~/.clap` and `~/.vst3`), and `.tar.gz`
@@ -105,7 +105,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution guide. Before o
 
 ## License
 
-This project is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, study, modify, and share it for any noncommercial purpose (personal use, research, hobby projects, and noncommercial organizations); commercial use needs separate permission from the licensor. The crates are not published to crates.io (`publish = false`).
+This project is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, study, modify, and share it for any noncommercial purpose (personal use, research, hobby projects, and noncommercial organizations); commercial use needs separate permission from the licensor. The crates are not published to crates.io (`publish = false`). Releases also ship `THIRD_PARTY_LICENSES.html` with the licenses of the open-source crates they contain.
+
+- Musicians: making, performing, recording, broadcasting or streaming music with the software, paid or not, is allowed; selling or bundling the software is not. See [ADDITIONAL-PERMISSIONS.md](ADDITIONAL-PERMISSIONS.md). This wording is a draft pending counsel review (`ns4-ns2j`); it is not legal advice.
+- Names: forks and modified builds must use a different name and icon. See [TRADEMARKS.md](TRADEMARKS.md).
 
 The licensing of the DAW plugin (`crates/nord-plugin`) is under review; until that is settled it is covered by the same license.
 

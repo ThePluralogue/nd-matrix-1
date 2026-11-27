@@ -104,6 +104,6 @@ The per-program tap analysis of this note ran `arm_dsp_live.py` with `--log DIR`
 
 ## Follow-ups
 
-1. Bus tap in `sharc-live --smp` (`DM(0x9405A..)` per interrupt), then rank Simple Tune and read layer B of the 33 two-layer programs.
+1. Bus tap in `sharc-live --smp` (`DM(0x9405A..)` per interrupt), then rank Simple Tune and read layer B of the 33 two-layer programs. Done for Simple Tune in D235 ([smp-bus-tap](smp-bus-tap.md)); the 33 two-layer programs remain.
 2. Identify cores 1 and 3 (scene II, or the second section).
 3. Run the five re-detected programs in the next full census so `smp_peak_dbfs` and `smp_cycles` come from one code version (the peaks do not change).

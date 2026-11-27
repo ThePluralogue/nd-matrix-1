@@ -1,4 +1,5 @@
 //! Data memory (SRAM, IOP window, device store) and the universal register file of [`Core`].
+use super::sdram::Sdram;
 use super::{Core, IOP_WORDS, SRAM_BYTES};
 
 /// Normal-word addresses backed by the flat SRAM image (blocks 1 to 3 of the ADSP-21489).
@@ -18,6 +19,18 @@ fn sram_offset(addr: u32) -> Option<usize> {
 }
 
 impl Core {
+    /// Internal SRAM word at `addr` without any side effect (no watch hit, no device count);
+    /// `None` outside the modelled SRAM. Used by the trace to show data mid-pass.
+    pub fn dm_peek(&self, addr: u32) -> Option<u32> {
+        let o = sram_offset(addr)?;
+        Some(u32::from_le_bytes([
+            self.sram[o],
+            self.sram[o + 1],
+            self.sram[o + 2],
+            self.sram[o + 3],
+        ]))
+    }
+
     /// Reads a 32-bit data word at a normal-word address.
     ///
     /// Internal SRAM and the IOP window are modelled; every other address reads from a sparse
@@ -54,6 +67,10 @@ impl Core {
                 self.sram[o + 1],
             ])));
         }
+        if Sdram::contains(addr) && !self.preset.contains_key(&addr) {
+            self.sdram_reads += 1;
+            return Ok(self.sdram.read(addr));
+        }
         self.device_reads += 1;
         if let Some(v) = self.preset.get(&addr) {
             return Ok(*v);
@@ -85,6 +102,11 @@ impl Core {
             let o = addr as usize * 2;
             self.sram[o..o + 2].copy_from_slice(&(value as u16).to_le_bytes());
             self.invalidate_sram_cache(addr, 1);
+            return Ok(());
+        }
+        if Sdram::contains(addr) {
+            self.sdram_writes += 1;
+            self.sdram.write(addr, value);
             return Ok(());
         }
         self.device_writes += 1;
@@ -162,6 +184,26 @@ mod tests {
         c.preset_device(0x3108_D008, 5);
         c.dm_write(0x3108_D008, 9).unwrap();
         assert_eq!(c.dm_read(0x3108_D008), Ok(5));
+    }
+
+    #[test]
+    fn sdram_window_is_dense_memory_with_its_own_counters() {
+        let mut c = Core::new(&[]);
+        c.dm_write(0x0802_0000, 7).unwrap();
+        c.dm_write(0x0803_FFFF, 9).unwrap();
+        assert_eq!(
+            (c.dm_read(0x0802_0000), c.dm_read(0x0803_FFFF)),
+            (Ok(7), Ok(9))
+        );
+        assert_eq!(c.dm_read(0x0802_0001), Ok(0));
+        assert_eq!((c.sdram_reads, c.sdram_writes), (3, 2));
+        assert_eq!((c.device_reads, c.device_writes), (0, 0));
+        // the word just past the window is still the sparse device store
+        c.dm_write(0x0804_0000, 5).unwrap();
+        assert_eq!((c.dm_read(0x0804_0000), c.device_writes), (Ok(5), 1));
+        // a scripted preset wins, as everywhere in the device space
+        c.preset_device(0x0802_0000, 0x55);
+        assert_eq!(c.dm_read(0x0802_0000), Ok(0x55));
     }
 
     #[test]

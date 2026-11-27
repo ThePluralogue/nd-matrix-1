@@ -14,6 +14,8 @@ pub struct OsUpdatePanel {
     /// What the running session was started with (`None` = placeholder).
     session: Option<PathBuf>,
     status: Status,
+    /// Engine toggle (HLE default, opt-in LLE).
+    engine: crate::engine_panel::EnginePanel,
     /// The window is open.
     pub open: bool,
     input: String,
@@ -31,6 +33,7 @@ impl OsUpdatePanel {
         };
         let session = status.path.as_ref().map(|(p, _)| p.clone());
         Self {
+            engine: crate::engine_panel::EnginePanel::new(config.clone()),
             config,
             session,
             status,
@@ -51,6 +54,8 @@ impl OsUpdatePanel {
         };
         self.message = Some(match firmware_setting::set(Path::new(text), &config) {
             Ok(n) => {
+                // the OLED shows the firmware fonts at once; a file without them keeps the fallback
+                let _ = nord_core::oled_font::install_from_path(Path::new(text));
                 self.status = firmware_setting::status(None, &config);
                 if self.status.path.as_ref().map(|(p, _)| p) == self.session.as_ref() {
                     format!("OK: {n} WAVE tables read.")
@@ -113,19 +118,16 @@ impl OsUpdatePanel {
 
     fn window_body(&mut self, ui: &mut egui::Ui) {
         ui.label("The WAVE sounds need the wavetables from your own Nord OS update.");
-        ui.label("1. Download the official update (Windows .zip/.exe or Mac .dmg):");
+        ui.label("1. Download the official update (Windows .zip/.exe or Mac .dmg) from Nord:");
         ui.hyperlink_to(
-            "Windows: Nord Stage 4 OS update",
-            firmware_setting::DOWNLOAD_WINDOWS,
-        );
-        ui.hyperlink_to(
-            "Mac: Nord Stage 4 OS update",
-            firmware_setting::DOWNLOAD_MAC,
+            "Nord Stage 4 Downloads page",
+            firmware_setting::DOWNLOADS_PAGE,
         );
         ui.label("2. Drop the downloaded file onto this window, click Browse, or paste its path:");
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            let input_w = (ui.available_width() - 196.0).max(180.0);
+            let input_w = (ui.available_width() - crate::text_scale::px(196.0))
+                .max(crate::text_scale::px(180.0));
             let field_h = ui.spacing().interact_size.y;
             let edit = ui.add(
                 egui::TextEdit::singleline(&mut self.input)
@@ -163,6 +165,9 @@ impl OsUpdatePanel {
         if let Some(m) = &self.message {
             ui.label(m);
         }
+        ui.separator();
+        let os_update = self.status.path.as_ref().map(|(p, _)| p.clone());
+        self.engine.show(ui, os_update.as_deref());
         ui.separator();
         match &self.status.path {
             None => {

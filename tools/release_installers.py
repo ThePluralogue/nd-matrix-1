@@ -4,7 +4,7 @@
 Reuses the allowlisted build outputs from `tools/release_package.py` so no
 forbidden files (`.reference/`, firmware dumps, presets) can enter any installer.
 Each installer packages the standalone apps (`ns4`, `nd-matrix-1`,
-`nord-plugin-standalone`) and installs (or lets the user select) the CLAP and
+`nd-matrix-1-standalone`) and installs (or lets the user select) the CLAP and
 VST3 DAW plugins into the standard OS plugin folders.
 """
 
@@ -17,15 +17,26 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
+from release_bundle_libs import DEFAULT_DOC_ROOT, DEFAULT_LIB_DIRS, bundle_libs
 from release_package import (
+    APPIMAGE_RUNTIME_DIR,
+    APPIMAGE_RUNTIME_SHA256,
+    BINS,
+    DOC_FILES,
     LEGACY_PLUGIN_STEM,
+    LEGACY_STANDALONE_BIN,
+    LEGAL_NOTICES,
     PLATFORMS,
     PLUGIN_STEM,
     ROOT,
+    STANDALONE_BIN,
+    THIRD_PARTY_NOTICES,
     Platform,
     collect,
+    sha256_hex,
     write_sha256,
 )
 
@@ -64,6 +75,8 @@ APPRUN_SCRIPT = """#!/bin/sh
 set -eu
 HERE="$(dirname "$(readlink -f "$0")")"
 export PATH="$HERE/usr/bin:$PATH"
+# Bundled xkbcommon libraries (winit loads them at start-up; D248).
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 case "${1:-}" in
   --cli)
@@ -72,7 +85,7 @@ case "${1:-}" in
     ;;
   --standalone-plugin)
     shift
-    exec "$HERE/usr/bin/nord-plugin-standalone" "$@"
+    exec "$HERE/usr/bin/@STANDALONE@" "$@"
     ;;
   --install-plugins)
     mkdir -p "$HOME/.clap" "$HOME/.vst3"
@@ -108,7 +121,11 @@ def write_macos_license(raw_stage: Path, resources: Path) -> None:
 
 def render_apprun() -> str:
     """AppRun script with the current and legacy plugin bundle names filled in."""
-    return APPRUN_SCRIPT.replace("@NEW@", PLUGIN_STEM).replace("@LEG@", LEGACY_PLUGIN_STEM)
+    return (
+        APPRUN_SCRIPT.replace("@NEW@", PLUGIN_STEM)
+        .replace("@LEG@", LEGACY_PLUGIN_STEM)
+        .replace("@STANDALONE@", STANDALONE_BIN)
+    )
 
 
 def render_macos_preinstall(kind: str, install_dir: str) -> str:
@@ -220,12 +237,17 @@ def render_inno_iss(
             "Components: app; Flags: ignoreversion"
         ),
         (
-            f'Source: "{src}\\nord-plugin-standalone.exe"; DestDir: "{{app}}"; '
+            f'Source: "{src}\\{STANDALONE_BIN}.exe"; DestDir: "{{app}}"; '
             "Components: app; Flags: ignoreversion"
         ),
         f'Source: "{src}\\ns4.exe"; DestDir: "{{app}}"; Components: cli; Flags: ignoreversion',
         f'Source: "{src}\\README.txt"; DestDir: "{{app}}"; Flags: ignoreversion',
         f'Source: "{src}\\HOST_COMPATIBILITY.md"; DestDir: "{{app}}"; Flags: ignoreversion',
+        f'Source: "{src}\\{THIRD_PARTY_NOTICES}"; DestDir: "{{app}}"; Flags: ignoreversion',
+        *(
+            f'Source: "{src}\\{name}"; DestDir: "{{app}}"; Flags: ignoreversion'
+            for name in LEGAL_NOTICES
+        ),
         (
             f'Source: "{src}\\LICENSE*"; DestDir: "{{app}}"; '
             "Flags: ignoreversion skipifsourcedoesntexist"
@@ -246,6 +268,7 @@ def render_inno_iss(
             "Components: vst3"
         ),
         (f'Type: files; Name: "{{commoncf64}}\\CLAP\\{LEGACY_PLUGIN_STEM}.clap"; Components: clap'),
+        f'Type: files; Name: "{{app}}\\{LEGACY_STANDALONE_BIN}.exe"; Components: app',
         "",
         "[Icons]",
         (
@@ -348,7 +371,7 @@ def render_deb_control(label: str) -> str:
         "Depends: libc6 (>= 2.38), libasound2t64 | libasound2, libgl1, libx11-6\n"
         f"Homepage: {APP_URL}\n"
         "Description: Source-available keyboard emulator: DSP engine, CLI, GUI, CLAP/VST3\n"
-        " Includes the ns4 CLI, nd-matrix-1 standalone GUI, nord-plugin-standalone,\n"
+        f" Includes the ns4 CLI, nd-matrix-1 standalone GUI, {STANDALONE_BIN},\n"
         " and CLAP (/usr/lib/clap) + VST3 (/usr/lib/vst3) DAW plugins.\n"
     )
 
@@ -379,7 +402,7 @@ def stage_linux_deb(
     doc_dir = pkg_root / "usr" / "share" / "doc" / "nd-matrix-1"
     doc_dir.mkdir(parents=True)
 
-    for b in ("ns4", "nd-matrix-1", "nord-plugin-standalone"):
+    for b in BINS:
         dst = pkg_root / "usr" / "bin" / b
         shutil.copy2(raw_stage / b, dst)
         dst.chmod(0o755)
@@ -399,7 +422,7 @@ def stage_linux_deb(
         pkg_root / "usr" / "share" / "icons" / "hicolor" / "scalable" / "apps" / "nd-matrix-1.svg"
     ).write_text(APP_SVG_ICON, encoding="utf-8", newline="\n")
 
-    for doc in ("README.txt", "HOST_COMPATIBILITY.md"):
+    for doc in DOC_FILES:
         shutil.copy2(raw_stage / doc, doc_dir / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, doc_dir / lic.name)
@@ -434,8 +457,14 @@ def stage_linux_appdir(
     work_dir: Path,
     root: Path = ROOT,
     target_dir: Path | None = None,
+    lib_dirs: Sequence[Path] | None = None,
+    doc_root: Path = DEFAULT_DOC_ROOT,
 ) -> tuple[Path, Path]:
-    """Create a Linux AppDir for `appimagetool`; return `(appdir, appimage_path)`."""
+    """Create a Linux AppDir for `appimagetool`; return `(appdir, appimage_path)`.
+
+    With `lib_dirs` the shared libraries of `release_bundle_libs.BUNDLED_LIBS` and their
+    copyright files are copied in (D248); `None` skips that, for staging tests.
+    """
     platform = PLATFORMS["x86_64-unknown-linux-gnu"]
     raw_stage = work_dir / "linux-raw-appimage"
     if raw_stage.exists():
@@ -451,7 +480,7 @@ def stage_linux_appdir(
     doc_dir = appdir / "usr" / "share" / "doc" / "nd-matrix-1"
     doc_dir.mkdir(parents=True)
 
-    for b in ("ns4", "nd-matrix-1", "nord-plugin-standalone"):
+    for b in BINS:
         dst = appdir / "usr" / "bin" / b
         shutil.copy2(raw_stage / b, dst)
         dst.chmod(0o755)
@@ -464,10 +493,15 @@ def stage_linux_appdir(
     shutil.copytree(raw_stage / f"{PLUGIN_STEM}.vst3", vst3_dst)
     (vst3_dst / platform.vst3_binary).chmod(0o755)
 
-    for doc in ("README.txt", "HOST_COMPATIBILITY.md"):
+    for doc in DOC_FILES:
         shutil.copy2(raw_stage / doc, doc_dir / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, doc_dir / lic.name)
+    # Notices of the runtime that appimagetool prepends (musl, LGPL libfuse, ...; D242).
+    shutil.copytree(raw_stage / APPIMAGE_RUNTIME_DIR, doc_dir / "appimage-runtime")
+
+    if lib_dirs is not None:
+        bundle_libs(appdir, lib_dirs, doc_root)
 
     (appdir / "nd-matrix-1.desktop").write_text(DESKTOP_ENTRY, encoding="utf-8", newline="\n")
     (appdir / "nd-matrix-1.svg").write_text(APP_SVG_ICON, encoding="utf-8", newline="\n")
@@ -476,8 +510,26 @@ def stage_linux_appdir(
     apprun.chmod(0o755)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    appimage_path = out_dir / f"nd-matrix-1-{label}-{platform.name}.AppImage"
+    # Catalog naming (appimage.github.io): no "linux", no leading "v": `<name>-<version>-<arch>`.
+    arch = platform.name.removeprefix("linux-")
+    appimage_path = out_dir / f"nd-matrix-1-{_strip_v(label)}-{arch}.AppImage"
     return appdir, appimage_path
+
+
+def check_appimage_runtime(runtime_file: Path | None) -> Path:
+    """Return the runtime file after checking it is the pinned one (D242).
+
+    Without `--runtime-file`, `appimagetool` downloads the moving `continuous` runtime, whose
+    licenses we cannot vouch for; a different file would not match `licenses/appimage-runtime/`.
+    """
+    if runtime_file is None:
+        raise ValueError("--appimage-runtime is required (pinned runtime, D242)")
+    actual = sha256_hex(runtime_file)
+    if actual != APPIMAGE_RUNTIME_SHA256:
+        raise ValueError(
+            f"{runtime_file} has sha256 {actual}, expected the pinned {APPIMAGE_RUNTIME_SHA256}"
+        )
+    return runtime_file
 
 
 def build_linux_appimage(
@@ -487,10 +539,17 @@ def build_linux_appimage(
     appimagetool: str = "appimagetool",
     root: Path = ROOT,
     target_dir: Path | None = None,
+    runtime_file: Path | None = None,
+    lib_dirs: Sequence[Path] = DEFAULT_LIB_DIRS,
+    doc_root: Path = DEFAULT_DOC_ROOT,
 ) -> Path:
-    appdir, appimage_path = stage_linux_appdir(label, out_dir, work_dir, root, target_dir)
+    runtime_file = check_appimage_runtime(runtime_file)
+    appdir, appimage_path = stage_linux_appdir(
+        label, out_dir, work_dir, root, target_dir, lib_dirs, doc_root
+    )
     merged_env = {**os.environ, "ARCH": "x86_64", "APPIMAGE_EXTRACT_AND_RUN": "1"}
-    subprocess.run([appimagetool, str(appdir), str(appimage_path)], env=merged_env, check=True)
+    cmd = [appimagetool, "--runtime-file", str(runtime_file), str(appdir), str(appimage_path)]
+    subprocess.run(cmd, env=merged_env, check=True)
     write_sha256(appimage_path)
     return appimage_path
 
@@ -555,11 +614,11 @@ def stage_macos_dmg(
     create_macos_app_bundle(label, raw_stage / "nd-matrix-1", dmg_stage / APP_BUNDLE_NAME)
     shutil.copytree(raw_stage / f"{PLUGIN_STEM}.vst3", dmg_stage / f"{PLUGIN_STEM}.vst3")
     shutil.copytree(raw_stage / f"{PLUGIN_STEM}.clap", dmg_stage / f"{PLUGIN_STEM}.clap")
-    for b in ("ns4", "nord-plugin-standalone"):
+    for b in ("ns4", STANDALONE_BIN):
         dst = dmg_stage / b
         shutil.copy2(raw_stage / b, dst)
         dst.chmod(0o755)
-    for doc in ("README.txt", "HOST_COMPATIBILITY.md"):
+    for doc in DOC_FILES:
         shutil.copy2(raw_stage / doc, dmg_stage / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, dmg_stage / lic.name)
@@ -633,11 +692,11 @@ def stage_macos_pkg_roots(
     create_macos_app_bundle(
         label, raw_stage / "nd-matrix-1", app_root / "Applications" / APP_BUNDLE_NAME
     )
-    for b in ("ns4", "nord-plugin-standalone"):
+    for b in ("ns4", STANDALONE_BIN):
         dst = app_root / "usr" / "local" / "bin" / b
         shutil.copy2(raw_stage / b, dst)
         dst.chmod(0o755)
-    for doc in ("README.txt", "HOST_COMPATIBILITY.md"):
+    for doc in DOC_FILES:
         shutil.copy2(raw_stage / doc, doc_dir / doc)
     for lic in raw_stage.glob("LICENSE*"):
         shutil.copy2(lic, doc_dir / lic.name)
@@ -669,6 +728,9 @@ def stage_macos_pkg_roots(
     resources = pkg_work / "resources"
     resources.mkdir(parents=True)
     shutil.copy2(raw_stage / "README.txt", resources / "README.txt")
+    shutil.copy2(raw_stage / THIRD_PARTY_NOTICES, resources / THIRD_PARTY_NOTICES)
+    for name in LEGAL_NOTICES:
+        shutil.copy2(raw_stage / name, resources / name)
     write_macos_license(raw_stage, resources)
 
     dist_xml = pkg_work / "distribution.xml"
@@ -785,6 +847,11 @@ def main(argv: list[str] | None = None) -> int:
         help="installer formats to build (default: all native formats for --target)",
     )
     parser.add_argument("--appimagetool", default="appimagetool")
+    parser.add_argument(
+        "--appimage-runtime",
+        type=Path,
+        help="pinned type2 runtime file (APPIMAGE_RUNTIME_URL); required for the appimage format",
+    )
     args = parser.parse_args(argv)
 
     from release_package import version_from_tag, workspace_version
@@ -810,7 +877,13 @@ def main(argv: list[str] | None = None) -> int:
         elif fmt == "appimage":
             built.append(
                 build_linux_appimage(
-                    label, args.out, args.work, args.appimagetool, args.root, args.target_dir
+                    label,
+                    args.out,
+                    args.work,
+                    args.appimagetool,
+                    args.root,
+                    args.target_dir,
+                    args.appimage_runtime,
                 )
             )
         elif fmt == "dmg":

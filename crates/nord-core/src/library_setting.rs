@@ -83,17 +83,13 @@ pub fn set(path: &Path, config: &Path) -> Result<usize, String> {
     let abs = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = abs.to_string_lossy();
     let shown = shown.strip_prefix(r"\\?\").unwrap_or(&shown).to_string();
-    let mut cfg = user_config::load_or_default(config);
-    cfg.library_path = Some(shown);
-    user_config::save(config, &cfg)?;
+    user_config::update(config, |c| c.library_path = Some(shown))?;
     Ok(n)
 }
 
 /// Forgets the saved library (the Nord OS update setting stays).
 pub fn clear(config: &Path) -> Result<(), String> {
-    let mut cfg = user_config::load_or_default(config);
-    cfg.library_path = None;
-    user_config::save(config, &cfg)
+    user_config::update(config, |c| c.library_path = None)
 }
 
 /// Plain-language text of a [`Status`] for the CLI.

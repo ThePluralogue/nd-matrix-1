@@ -1,0 +1,1 @@
+{"source": "arm (partial: the one program measured before the full sweep, numbers from the ARM probe of Dual Gates at 120 BPM)", "programs": [{"program": "Dual Gates.ns4p", "layers": {"A": {"voice_on_ms": [0.0, 0.0, 0.0], "voice_off_ms": [700.0, 700.0, 700.0], "gate_edges": [{"t_ms": 124.0, "value": 1.0}, {"t_ms": 208.0, "value": 0.0}, {"t_ms": 249.0, "value": 1.0}]}}}]}

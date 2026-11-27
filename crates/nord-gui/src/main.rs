@@ -21,7 +21,8 @@ struct CliArgs {
     initial_program: Option<PathBuf>,
     /// `--program A:14`: panel location to load from `--backup` (no file path).
     initial_slot: Option<String>,
-    initial_backup: Option<PathBuf>,
+    /// `.ns4b` files to open; the first is the primary bank, the rest are merged into it.
+    initial_backups: Vec<PathBuf>,
     initial_piano: Option<PathBuf>,
     initial_sample: Option<PathBuf>,
     firmware: nord_core::render_opts::FirmwareOptions,
@@ -52,7 +53,7 @@ fn parse_cli_args<I: IntoIterator<Item = String>>(args: I) -> CliArgs {
             }
         } else if arg == "--backup" || arg == "-b" {
             if let Some(path) = iter.next() {
-                parsed.initial_backup = Some(PathBuf::from(path));
+                parsed.initial_backups.push(PathBuf::from(path));
             }
         } else if arg == "--piano" {
             if let Some(path) = iter.next() {
@@ -67,7 +68,7 @@ fn parse_cli_args<I: IntoIterator<Item = String>>(args: I) -> CliArgs {
             if lower.ends_with(".ns4p") {
                 parsed.initial_program = Some(PathBuf::from(arg));
             } else if lower.ends_with(".ns4b") {
-                parsed.initial_backup = Some(PathBuf::from(arg));
+                parsed.initial_backups.push(PathBuf::from(arg));
             } else if lower.ends_with(".npno") {
                 parsed.initial_piano = Some(PathBuf::from(arg));
             } else if lower.ends_with(".nsmp4") {
@@ -94,14 +95,24 @@ struct Stage4App {
     firmware: FirmwarePanelState,
     os_update: nord_gui::os_update_panel::OsUpdatePanel,
     debug_dialog: nord_gui::debug_dialog::DebugDialogState,
+    /// Text size option (issue #592): shown size, and where it is saved.
+    text_scale: nord_gui::text_scale::TextScale,
+    config_path: Option<PathBuf>,
+    /// Window width the bar needs at the size in force, last sent as the minimum window size.
+    min_width_sent: f32,
 }
 
-/// The backup the app opens at start: `--backup` wins, else the saved sound library (`ns4 library
-/// set`, `NS4_LIBRARY`), the same one the DAW plugin plays from, so the panel's program list is
-/// filled without a `.ns4b` next to the executable. `None` leaves the library empty (the path
-/// field still offers a `.ns4b` found in the working directory).
-fn startup_backup(cli: Option<PathBuf>, saved: Option<PathBuf>) -> Option<PathBuf> {
-    cli.or(saved)
+/// The backups the app opens at start: the `--backup` files win (several merge, D239), else the
+/// saved sound library (`ns4 library set`, `NS4_LIBRARY`), the same one the DAW plugin plays
+/// from, so the panel's program list is filled without a `.ns4b` next to the executable. Empty
+/// leaves the library empty (the path field still offers a `.ns4b` found in the working
+/// directory).
+fn startup_backups(cli: Vec<PathBuf>, saved: Option<PathBuf>) -> Vec<PathBuf> {
+    if cli.is_empty() {
+        saved.into_iter().collect()
+    } else {
+        cli
+    }
 }
 
 /// The program the app loads at start: `--program A:14` wins; else, like the hardware, which
@@ -160,6 +171,13 @@ impl Stage4App {
         let active_keys = Arc::new(std::array::from_fn(|_| AtomicBool::new(false)));
         let audio_handle = start_audio_and_midi(Arc::clone(&active_keys));
 
+        let config_path = nord_core::user_config::default_config_path();
+        // A screenshot run always shows the plain 100 % panel, whatever the user saved.
+        let text_scale = if cli.screenshot_target.is_some() {
+            Default::default()
+        } else {
+            nord_gui::text_scale::load(config_path.as_deref())
+        };
         let state = Stage4PanelState {
             use_baked_plate: true,
             ..Default::default()
@@ -183,7 +201,11 @@ impl Stage4App {
                 std::env::var("NS4_WAVE_TABLES").ok().as_deref(),
             ),
             debug_dialog: nord_gui::debug_dialog::DebugDialogState::default(),
+            text_scale,
+            config_path,
+            min_width_sent: 0.0,
         };
+        nord_gui::text_scale::apply(&cc.egui_ctx, text_scale, &mut app.state.baked_zoom);
         app.firmware.push(&app.audio_handle);
         if let Some(plan) = &app.shot {
             app.state.view = plan.view();
@@ -198,7 +220,7 @@ impl Stage4App {
                 eprintln!("[GUI] Could not read program file: {}", path.display());
             }
         }
-        let explicit = cli.initial_backup.is_some();
+        let explicit = !cli.initial_backups.is_empty();
         let saved = saved_library();
         app_log(&format!(
             "start: saved library {} ({}; {} = {:?})",
@@ -212,12 +234,12 @@ impl Stage4App {
             nord_core::library_setting::LIBRARY_ENV,
             std::env::var(nord_core::library_setting::LIBRARY_ENV).ok(),
         ));
-        if let Some(path) = startup_backup(cli.initial_backup, saved) {
-            match app.library.open_backup_path(&path) {
-                Ok(()) if explicit => app
+        for path in startup_backups(cli.initial_backups, saved) {
+            match app.library.add_backup_path(&path) {
+                Ok(_) if explicit => app
                     .debug_dialog
                     .open_tab(nord_gui::debug_dialog::DebugTab::Library),
-                Ok(()) => {
+                Ok(_) => {
                     println!("[GUI] Opened the saved library: {}", path.display());
                     app_log(&format!(
                         "opened library {} ({} programs)",
@@ -244,6 +266,33 @@ impl Stage4App {
         }
 
         app
+    }
+
+    /// Keys, then make the context show the chosen text size (and keep the window wide enough for
+    /// the bar at that size).
+    fn update_text_scale(&mut self, ctx: &egui::Context) {
+        if self.shot.is_some() {
+            return;
+        }
+        if nord_gui::text_scale::handle_keys(ctx, &mut self.text_scale) {
+            self.save_text_scale();
+        }
+        nord_gui::text_scale::apply(ctx, self.text_scale, &mut self.state.baked_zoom);
+        let monitor = ctx.input(|i| i.viewport().monitor_size);
+        let min_w = nord_gui::text_scale::min_window_width(monitor.map(|m| m.x));
+        let min_h = nord_gui::text_scale::min_window_height(monitor.map(|m| m.y));
+        if (min_w - self.min_width_sent).abs() > 0.5 {
+            self.min_width_sent = min_w;
+            ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
+                min_w, min_h,
+            )));
+        }
+    }
+
+    fn save_text_scale(&self) {
+        if let Err(e) = nord_gui::text_scale::save(self.config_path.as_deref(), self.text_scale) {
+            eprintln!("[GUI] Could not save the text size: {e}");
+        }
     }
 
     fn load_program_from_bytes(&mut self, bytes: &[u8], title_override: Option<&str>) -> bool {
@@ -290,6 +339,7 @@ impl eframe::App for Stage4App {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frame_count += 1;
+        self.update_text_scale(ctx);
         self.library
             .poll_results(&mut self.state, &self.audio_handle);
         if self
@@ -370,7 +420,7 @@ impl eframe::App for Stage4App {
             let bar_w = plate_rect.width().min(screen.width() - left_pad).max(200.0);
 
             egui::TopBottomPanel::top("ns4_floating_bar")
-                .exact_height(22.0)
+                .exact_height(nord_gui::text_scale::bar_height())
                 .show_separator_line(false)
                 .frame(egui::Frame::NONE.fill(egui::Color32::TRANSPARENT))
                 .show(ctx, |ui| {
@@ -379,13 +429,14 @@ impl eframe::App for Stage4App {
                         if left_pad > 0.0 {
                             ui.add_space(left_pad);
                         }
-                        ui.allocate_ui(egui::vec2(bar_w, 18.0), |ui| {
+                        ui.allocate_ui(egui::vec2(bar_w, nord_gui::text_scale::px(18.0)), |ui| {
                             ui.spacing_mut().item_spacing.x = 5.0;
-                            ui.spacing_mut().button_padding = egui::vec2(7.0, 1.5);
+                            ui.spacing_mut().button_padding =
+                                egui::vec2(7.0, 1.5) * nord_gui::text_scale::factor();
                             ui.horizontal(|ui| {
                                 let hw_pill = |ui: &mut egui::Ui, label: &str| {
                                     let rt = egui::RichText::new(label)
-                                        .size(9.0)
+                                        .size(nord_gui::text_scale::px(9.0))
                                         .strong()
                                         .color(egui::Color32::from_rgb(236, 240, 244));
                                     ui.add(
@@ -424,11 +475,22 @@ impl eframe::App for Stage4App {
                                     self.debug_dialog
                                         .open_tab(nord_gui::debug_dialog::DebugTab::Guide);
                                 }
+                                nord_gui::panel::baked_zoom::bar_controls(
+                                    ui,
+                                    &mut self.state.baked_zoom,
+                                );
+                                if self.shot.is_none()
+                                    && nord_gui::text_scale::bar_controls(ui, &mut self.text_scale)
+                                {
+                                    self.save_text_scale();
+                                }
 
                                 // Draggable empty space between left pills and right window icons
-                                let drag_w = (ui.available_width() - 52.0).max(12.0);
+                                let drag_w = (ui.available_width()
+                                    - nord_gui::text_scale::px(52.0))
+                                .max(12.0);
                                 let (_, drag_resp) = ui.allocate_exact_size(
-                                    egui::vec2(drag_w, 16.0),
+                                    egui::vec2(drag_w, nord_gui::text_scale::px(16.0)),
                                     egui::Sense::click_and_drag(),
                                 );
                                 if drag_resp.hovered() {
@@ -440,7 +502,10 @@ impl eframe::App for Stage4App {
 
                                 // Vector Minimize button
                                 let (min_rect, min_resp) = ui.allocate_exact_size(
-                                    egui::vec2(22.0, 16.0),
+                                    egui::vec2(
+                                        nord_gui::text_scale::px(22.0),
+                                        nord_gui::text_scale::px(16.0),
+                                    ),
                                     egui::Sense::click(),
                                 );
                                 let min_resp =
@@ -482,7 +547,10 @@ impl eframe::App for Stage4App {
 
                                 // Vector Close button
                                 let (cls_rect, cls_resp) = ui.allocate_exact_size(
-                                    egui::vec2(22.0, 16.0),
+                                    egui::vec2(
+                                        nord_gui::text_scale::px(22.0),
+                                        nord_gui::text_scale::px(16.0),
+                                    ),
                                     egui::Sense::click(),
                                 );
                                 let cls_resp =
@@ -734,6 +802,10 @@ fn main() -> eframe::Result<()> {
     let argv: Vec<String> = std::env::args().collect();
     // the saved Nord OS update file fills NS4_WAVE_TABLES (env and flags still win), before any thread
     nord_core::user_config::apply_saved_default();
+    // the OLED fonts come from the same file; without one the built-in painter stays (D128)
+    if let Err(e) = nord_core::oled_font::install_from_env() {
+        eprintln!("nd-matrix-1: OLED fonts not loaded ({e}); using the built-in OLED text");
+    }
     let firmware = match nord_core::render_opts::FirmwareOptions::from_args(&argv) {
         Ok(f) => f,
         Err(e) => {
@@ -771,6 +843,10 @@ wrote {}",
         }
         return Ok(());
     }
+    // opt-in `--engine lle` (D2/D119): a fallback to the built-in engine prints why, never fatal
+    let engine = nord_core::engine_select::startup("nd-matrix-1", &argv);
+    // `--precision exact|fast` (LLE only): plumbed to the backend seam, ignored by HLE
+    let _engine = nord_core::precision::apply_startup("nd-matrix-1", &argv, engine);
     let cli = parse_cli_args(argv);
 
     let mut viewport = egui::ViewportBuilder::default()
@@ -844,16 +920,17 @@ mod tests {
     }
 
     #[test]
-    fn the_startup_backup_is_the_cli_one_else_the_saved_library() {
-        let cli = PathBuf::from("cli.ns4b");
+    fn the_startup_backups_are_the_cli_ones_else_the_saved_library() {
+        let cli = PathBuf::from("given.ns4b");
+        let more = PathBuf::from("more.ns4b");
         let saved = PathBuf::from("saved.ns4b");
         assert_eq!(
-            startup_backup(Some(cli.clone()), Some(saved.clone())),
-            Some(cli.clone())
+            startup_backups(vec![cli.clone(), more.clone()], Some(saved.clone())),
+            vec![cli.clone(), more]
         );
-        assert_eq!(startup_backup(Some(cli.clone()), None), Some(cli));
-        assert_eq!(startup_backup(None, Some(saved.clone())), Some(saved));
-        assert_eq!(startup_backup(None, None), None);
+        assert_eq!(startup_backups(vec![cli.clone()], None), vec![cli]);
+        assert_eq!(startup_backups(vec![], Some(saved.clone())), vec![saved]);
+        assert!(startup_backups(vec![], None).is_empty());
     }
 
     #[test]
@@ -906,7 +983,7 @@ mod tests {
             parsed.initial_program,
             Some(PathBuf::from("bank_a/patch.ns4p"))
         );
-        assert_eq!(parsed.initial_backup, Some(PathBuf::from("restore.ns4b")));
+        assert_eq!(parsed.initial_backups, vec![PathBuf::from("restore.ns4b")]);
         assert_eq!(parsed.initial_piano, Some(PathBuf::from("grand.npno")));
         assert_eq!(parsed.initial_sample, Some(PathBuf::from("strings.nsmp4")));
 
@@ -916,8 +993,16 @@ mod tests {
 
         let positional = parse_cli_args(["nd-matrix-1".to_string(), "factory.ns4b".to_string()]);
         assert_eq!(
-            positional.initial_backup,
-            Some(PathBuf::from("factory.ns4b"))
+            positional.initial_backups,
+            vec![PathBuf::from("factory.ns4b")]
+        );
+
+        let many = parse_cli_args(
+            ["nord-stage4", "a.ns4b", "--backup", "b.ns4b", "C.NS4B"].map(String::from),
+        );
+        assert_eq!(
+            many.initial_backups,
+            ["a.ns4b", "b.ns4b", "C.NS4B"].map(PathBuf::from)
         );
     }
 

@@ -9,9 +9,11 @@ forward-slash zip entries, and an allowlist so nothing outside the expected file
 Archive layout (one top-level folder, so extraction never litters the cwd):
 
     nd-matrix-1-<tag>-<platform>/
-        ns4[.exe]  nd-matrix-1[.exe]  nord-plugin-standalone[.exe]
+        ns4[.exe]  nd-matrix-1[.exe]  nd-matrix-1-standalone[.exe]
         nd-matrix-1.clap  nd-matrix-1.vst3/
-        README.txt  HOST_COMPATIBILITY.md  [LICENSE*]
+        README.txt  HOST_COMPATIBILITY.md  THIRD_PARTY_LICENSES.html
+        ADDITIONAL-PERMISSIONS.md  TRADEMARKS.md  [LICENSE*]
+        licenses/appimage-runtime/   (Linux only: notices of the runtime inside the .AppImage)
 
 Verify a built archive with `tools/release_verify.py`.
 """
@@ -32,13 +34,50 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 PRODUCT = "nd-matrix-1"
-BINS = ("ns4", "nd-matrix-1", "nord-plugin-standalone")
+# Plugin build hosted by nih-plug's standalone wrapper (needs an audio device). Distinct from
+# the `nd-matrix-1` egui GUI, so it ships too; named after the product, never `nord-` (ns4-b9rn).
+STANDALONE_BIN = "nd-matrix-1-standalone"
+BINS = ("ns4", "nd-matrix-1", STANDALONE_BIN)
+# Binary name shipped before the rename; Windows installs delete it so no stale copy remains.
+LEGACY_STANDALONE_BIN = "nord-plugin-standalone"
 # Must equal `[nord-plugin] name` in bundler.toml (xtask names the bundles after it).
 PLUGIN_STEM = "nd-matrix-1"
 # Bundle name shipped before the rename; installers delete it so no second copy remains.
 LEGACY_PLUGIN_STEM = "nord-plugin"
 README_SRC = Path("docs/RELEASE_README.txt")
 EXTRA_DOCS = (("docs/HOST_COMPATIBILITY.md", "HOST_COMPATIBILITY.md"),)
+# Third-party license notices for every crate in the binaries (D238). Generated at release time
+# by `cargo about generate` (see docs/RELEASING.md); never committed. Shipped next to LICENSE.
+THIRD_PARTY_NOTICES = "THIRD_PARTY_LICENSES.html"
+# Licensor permission for musicians and the name/icon policy (D241). Committed in the repo root,
+# shipped next to LICENSE in every release; a release without them is refused.
+LEGAL_NOTICES = ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md")
+# Documentation files every installer layout places beside the license (README.txt is staged
+# from README_SRC, the others from EXTRA_DOCS, THIRD_PARTY_NOTICES and LEGAL_NOTICES).
+DOC_FILES = ("README.txt", "HOST_COMPATIBILITY.md", THIRD_PARTY_NOTICES, *LEGAL_NOTICES)
+# License texts of the AppImage runtime that `appimagetool` embeds in every `.AppImage` (musl,
+# LGPL-2.1 libfuse, squashfuse, zstd, zlib, mimalloc; D242). Committed under `licenses/`, shipped in
+# the Linux archive at the same relative path and in the AppImage under `usr/share/doc/<pkg>/`.
+APPIMAGE_RUNTIME_DIR = "licenses/appimage-runtime"
+# The runtime is pinned: `appimagetool` 1.9.0 otherwise downloads the moving `continuous` release
+# of AppImage/type2-runtime at build time, so the notices could not match the shipped runtime.
+# VERIFIED: sha256 of `runtime-x86_64` from release 20251108 (commit dd6cebe), computed with
+# `sha256sum` on the downloaded asset (944632 bytes) and checked by `tools/release_installers.py`
+# before every AppImage build (test_build_appimage_rejects_unpinned_runtime).
+APPIMAGE_RUNTIME_URL = (
+    "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
+)
+APPIMAGE_RUNTIME_SHA256 = "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+APPIMAGE_RUNTIME_FILES = (
+    "README.md",
+    "type2-runtime-LICENSE.txt",
+    "musl-LICENSE.txt",
+    "libfuse-LGPL-2.1.txt",
+    "squashfuse-LICENSE.txt",
+    "zstd-LICENSE.txt",
+    "zlib-LICENSE.txt",
+    "mimalloc-LICENSE.txt",
+)
 TAG_RE = re.compile(r"^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$")
 
 
@@ -107,6 +146,17 @@ def _walk_files(path: Path) -> list[Path]:
     return sorted(p for p in path.rglob("*") if p.is_file())
 
 
+def _need_notices(root: Path) -> Path:
+    """Path of the generated notices file, or an error that says how to produce it."""
+    path = root / THIRD_PARTY_NOTICES
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"missing {path}: generate it with `cargo about generate --workspace --all-features "
+            f"about.hbs -o {THIRD_PARTY_NOTICES}` (docs/RELEASING.md)"
+        )
+    return path
+
+
 def collect(
     platform: Platform, root: Path, target_dir: Path | None = None
 ) -> list[tuple[Path, str]]:
@@ -135,6 +185,14 @@ def collect(
     items.append((need(root / README_SRC), "README.txt"))
     for src, dest in EXTRA_DOCS:
         items.append((need(root / src), dest))
+    items.append((_need_notices(root), THIRD_PARTY_NOTICES))
+    for name in LEGAL_NOTICES:
+        items.append((need(root / name), name))
+    if platform.os == "linux":
+        for name in APPIMAGE_RUNTIME_FILES:
+            items.append(
+                (need(root / APPIMAGE_RUNTIME_DIR / name), f"{APPIMAGE_RUNTIME_DIR}/{name}")
+            )
     for lic in sorted(root.glob("LICENSE*")):
         if lic.is_file():
             items.append((lic, lic.name))

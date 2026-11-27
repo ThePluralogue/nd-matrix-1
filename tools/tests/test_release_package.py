@@ -10,12 +10,22 @@ LIN = rp.PLATFORMS["x86_64-unknown-linux-gnu"]
 MAC = rp.PLATFORMS["aarch64-apple-darwin"]
 
 
+NOTICES_OK = (
+    "<html><body><h1>Third-party licenses</h1>"
+    + "<pre>MIT License\nApache License\n</pre>" * 40
+    + "</body></html>"
+)
+
+
 def make_tree(tmp_path, platform):
     """Synthetic repo + target dir with every file `collect` expects, plus stray junk."""
     root = tmp_path / "repo"
     (root / "docs").mkdir(parents=True)
     (root / "docs" / "RELEASE_README.txt").write_text("readme")
     (root / "docs" / "HOST_COMPATIBILITY.md").write_text("compat")
+    (root / rp.THIRD_PARTY_NOTICES).write_text(NOTICES_OK, encoding="utf-8")
+    for name in rp.LEGAL_NOTICES:
+        (root / name).write_text(f"{name} text", encoding="utf-8")
     (root / "Cargo.toml").write_text(
         '[workspace]\nmembers = []\n\n[workspace.package]\nversion = "1.2.3"\n'
     )
@@ -34,6 +44,12 @@ def make_tree(tmp_path, platform):
         clap.write_bytes(b"clap")
     else:
         (bundled / "nd-matrix-1.clap").write_bytes(b"clap")
+    runtime = root / rp.APPIMAGE_RUNTIME_DIR
+    runtime.mkdir(parents=True)
+    for name in rp.APPIMAGE_RUNTIME_FILES:
+        text = "GNU LESSER GENERAL PUBLIC LICENSE\n" if "LGPL" in name else f"notice {name}\n"
+        (runtime / name).write_text(text, encoding="utf-8")
+    (runtime / "stray.txt").write_text("must never ship")
     (root / ".reference").mkdir()
     (root / ".reference" / "fw.bin").write_bytes(b"firmware")
     return root
@@ -90,6 +106,52 @@ def test_collect_includes_license_when_present(tmp_path):
     root = make_tree(tmp_path, LIN)
     (root / "LICENSE-MIT").write_text("mit")
     assert "LICENSE-MIT" in {rel for _, rel in rp.collect(LIN, root)}
+
+
+def test_collect_includes_third_party_notices(tmp_path):
+    root = make_tree(tmp_path, LIN)
+    items = {rel: src for src, rel in rp.collect(LIN, root)}
+    assert items["THIRD_PARTY_LICENSES.html"] == root / "THIRD_PARTY_LICENSES.html"
+
+
+def test_collect_missing_third_party_notices_names_the_command(tmp_path):
+    root = make_tree(tmp_path, LIN)
+    (root / rp.THIRD_PARTY_NOTICES).unlink()
+    with pytest.raises(FileNotFoundError, match="cargo about generate"):
+        rp.collect(LIN, root)
+
+
+def test_collect_includes_legal_notices(tmp_path):
+    root = make_tree(tmp_path, LIN)
+    items = {rel: src for src, rel in rp.collect(LIN, root)}
+    for name in ("ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"):
+        assert items[name] == root / name
+
+
+@pytest.mark.parametrize("name", ["ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"])
+def test_collect_missing_legal_notice_fails(tmp_path, name):
+    root = make_tree(tmp_path, LIN)
+    (root / name).unlink()
+    with pytest.raises(FileNotFoundError, match=name):
+        rp.collect(LIN, root)
+
+
+def test_package_archives_ship_notices_next_to_license(tmp_path):
+    for platform in (LIN, WIN, MAC):
+        root = make_tree(tmp_path / platform.name, platform)
+        (root / "LICENSE").write_text("PolyForm", encoding="utf-8")
+        archive = rp.package(platform.triple, "v1.2.3", tmp_path / platform.name / "out", root)
+        if archive.suffix == ".zip":
+            with zipfile.ZipFile(archive) as zf:
+                names = zf.namelist()
+        else:
+            with tarfile.open(archive, "r:gz") as tf:
+                names = tf.getnames()
+        top = archive.name.removesuffix(".zip").removesuffix(".tar.gz")
+        assert f"{top}/LICENSE" in names
+        assert f"{top}/THIRD_PARTY_LICENSES.html" in names
+        assert f"{top}/ADDITIONAL-PERMISSIONS.md" in names
+        assert f"{top}/TRADEMARKS.md" in names
 
 
 def test_write_sha256_is_lf_and_sha256sum_format(tmp_path):
@@ -203,3 +265,53 @@ def test_workspace_contact_metadata_has_no_foreign_email_and_current_repo_url():
     ]
     assert pkg["authors"] == ["ymatrix1"]
     assert pkg["repository"] == "https://github.com/ymatrix1/nd-matrix-1"
+
+
+def test_collect_ships_appimage_runtime_notices_on_linux_only(tmp_path):
+    lin = {rel for _, rel in rp.collect(LIN, make_tree(tmp_path / "l", LIN))}
+    want = {f"{rp.APPIMAGE_RUNTIME_DIR}/{n}" for n in rp.APPIMAGE_RUNTIME_FILES}
+    assert want <= lin
+    assert f"{rp.APPIMAGE_RUNTIME_DIR}/stray.txt" not in lin
+    for plat in (WIN, MAC):
+        other = {rel for _, rel in rp.collect(plat, make_tree(tmp_path / plat.name, plat))}
+        assert not any(rel.startswith("licenses/") for rel in other)
+
+
+def test_collect_missing_appimage_runtime_notice_raises(tmp_path):
+    root = make_tree(tmp_path, LIN)
+    (root / rp.APPIMAGE_RUNTIME_DIR / "libfuse-LGPL-2.1.txt").unlink()
+    with pytest.raises(FileNotFoundError, match="libfuse-LGPL-2.1.txt"):
+        rp.collect(LIN, root)
+
+
+def test_runtime_notice_files_cover_every_linked_component():
+    # The runtime links musl, libfuse, squashfuse, zstd, zlib and mimalloc (README.md there).
+    names = " ".join(rp.APPIMAGE_RUNTIME_FILES)
+    for part in ("type2-runtime", "musl", "libfuse", "squashfuse", "zstd", "zlib", "mimalloc"):
+        assert part in names
+
+
+def test_committed_runtime_notices_are_real_texts():
+    base = rp.ROOT / rp.APPIMAGE_RUNTIME_DIR
+    for name in rp.APPIMAGE_RUNTIME_FILES:
+        text = (base / name).read_text(encoding="utf-8")
+        assert len(text) > 500, name
+        assert "\u2014" not in text, name
+    assert "GNU LESSER GENERAL PUBLIC LICENSE" in (base / "libfuse-LGPL-2.1.txt").read_text()
+    readme = (base / "README.md").read_text(encoding="utf-8")
+    assert rp.APPIMAGE_RUNTIME_SHA256 in readme
+    assert rp.APPIMAGE_RUNTIME_URL.rsplit("/", 1)[0].split("download/")[1] in readme
+
+
+def test_release_workflow_downloads_the_pinned_runtime():
+    workflow = (rp.ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert rp.APPIMAGE_RUNTIME_URL in workflow
+    assert "--appimage-runtime" in workflow
+
+
+def test_release_workflow_builds_linux_on_the_oldest_supported_lts_and_installs_xkb():
+    """glibc: the AppImage catalog test runs on the oldest Ubuntu LTS (D248)."""
+    workflow = (rp.ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "os: ubuntu-22.04" in workflow
+    assert "os: ubuntu-24.04\n            target: x86_64-unknown-linux-gnu" not in workflow
+    assert "libxkbcommon-x11-0" in workflow

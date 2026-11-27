@@ -12,6 +12,7 @@
 //! | `F REC11` | place the file for the descriptor directory index `REC11` and write the linear page directory | `F base=.. dir=..` |
 //! | `C PATH` | capture the tapped words of every later pass to PATH (f32 little endian) | `C ok` |
 //! | `H 0\|1` | SMP ring tap: 1 reads the half the pointer does not hold on entry | `H n` |
+//! | `B ADDR [i\|f [PATH]]` | bus tap (D235): tap the DM word pair `ADDR`, `ADDR+1` (integer words x 2^-29, or `f` float bits) instead of the ring, or with `PATH` into that file beside the ring tap; `B 0` off | `B addr=.. mode=.. [file]` / `B off` |
 //! | `E [FIRST COUNT]` | external-port DMA chain totals (`--epchain`); with a range also the executed TCBs | `E chains=.. tcbs=..` (+ ` ext:int:count:dir` items, hex) |
 //! | `S` | register snapshots taken at the first `--probe` pc inside the audio interrupts since the last `S` (max 256) | `S r=..;i=..;l=.. ...` |
 //! | `G` | core registers `r`, `s`, `i`, `l` (hex) | `G pc=.. r=.. s=.. i=.. l=..` |
@@ -19,6 +20,7 @@
 //! | `Q` | end | none |
 //!
 //! Everything is deterministic: no clock, no thread, replies are a pure function of the commands.
+use super::live_bus::BusTap;
 pub use super::live_presets::{boot_core, org_preset, pno_preset, preset_named, sy_preset, Preset};
 use super::live_sy::SyModel;
 use super::msg::{deliver, Msg};
@@ -117,7 +119,7 @@ impl Live {
             Err(e)
                 if matches!(
                     line.trim_start().chars().next(),
-                    Some('P' | 'D' | 'L' | 'F' | 'C' | 'H' | 'S' | 'W' | 'G')
+                    Some('P' | 'D' | 'L' | 'F' | 'C' | 'H' | 'B' | 'S' | 'W' | 'G')
                 ) =>
             {
                 Some(format!("ERR {e}"))
@@ -188,6 +190,21 @@ impl Live {
                     None => return Err("H: not an SMP chip".to_string()),
                 }
                 Ok(Some(format!("H {}", u8::from(on))))
+            }
+            Some("B") => {
+                let tap = BusTap::parse(num(1)?, f.get(2).copied())?;
+                let path = f.get(3..).map(|p| p.join(" ")).filter(|p| !p.is_empty());
+                let file = match (&tap, &path) {
+                    (Some(_), Some(p)) => {
+                        Some(std::fs::File::create(p).map_err(|e| format!("B {p}: {e}"))?)
+                    }
+                    _ => None,
+                };
+                match &mut self.sy {
+                    Some(sy) => (sy.bus_tap, sy.bus_file) = (tap, file),
+                    None => return Err("B: not a sample chip".to_string()),
+                }
+                Ok(Some(BusTap::reply(tap, path.is_some() && tap.is_some())))
             }
             Some("S") => match &mut self.sy {
                 Some(sy) => Ok(Some(format!(

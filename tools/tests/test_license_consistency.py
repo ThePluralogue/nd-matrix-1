@@ -51,7 +51,33 @@ def test_clean_tree_has_no_problems(tmp_path):
     _write_tree(
         tmp_path, lc.SPDX_ID, "publish = false", lc.LICENSE_HEADER + "\n\nRequired Notice: x\n"
     )
+    _write_legal(tmp_path)
     assert lc.problems(tmp_path) == []
+
+
+def _write_legal(root: Path) -> None:
+    (root / "ADDITIONAL-PERMISSIONS.md").write_text("a permitted purpose; no selling")
+    (root / "TRADEMARKS.md").write_text("use a different name")
+
+
+def test_repository_legal_files_carry_key_phrases():
+    assert lc.legal_file_problems() == []
+    perms = (lc.ROOT / "ADDITIONAL-PERMISSIONS.md").read_text(encoding="utf-8")
+    assert "paid performances and commercial recordings" in perms
+    assert "does not allow selling" in perms
+
+
+def test_legal_files_missing_or_stripped_are_reported(tmp_path):
+    assert lc.legal_file_problems(tmp_path) == [
+        "ADDITIONAL-PERMISSIONS.md missing",
+        "TRADEMARKS.md missing",
+    ]
+    (tmp_path / "ADDITIONAL-PERMISSIONS.md").write_text("nothing")
+    (tmp_path / "TRADEMARKS.md").write_text("nothing")
+    found = lc.legal_file_problems(tmp_path)
+    assert "ADDITIONAL-PERMISSIONS.md lacks 'permitted purpose'" in found
+    assert "ADDITIONAL-PERMISSIONS.md lacks 'selling'" in found
+    assert "TRADEMARKS.md lacks 'different name'" in found
 
 
 def test_release_readme_carries_noncommercial_notice():

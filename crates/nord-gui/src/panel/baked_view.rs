@@ -242,17 +242,23 @@ pub fn render_baked_panel(ui: &mut Ui, state: &mut Stage4PanelState, audio_handl
     let ch = assets.layout.chassis_px.height.max(1) as f32;
     let aspect = cw / ch;
 
-    let avail = ui.available_size();
-    let fit_w = avail.x.min(avail.y * aspect).max(320.0);
-    let fit_h = fit_w / aspect;
-    let (alloc, _) = ui.allocate_exact_size(vec2(avail.x.max(fit_w), fit_h), Sense::hover());
-    let plate_rect = Rect::from_center_size(alloc.center(), vec2(fit_w, fit_h));
+    let (view, _) = ui.allocate_exact_size(ui.available_size(), Sense::hover());
+    // Before any control is registered, so the controls win over the pan drag surface.
+    state
+        .baked_zoom
+        .update(ui, view, aspect, &assets.layout.bays);
+    let plate_rect = state.baked_zoom.plate_rect(view, aspect);
+    ui.set_clip_rect(ui.clip_rect().intersect(view));
+    // The bar aligns to the visible part of the plate.
     ui.ctx()
-        .data_mut(|d| d.insert_temp(Id::new("ns4_baked_plate_rect"), plate_rect));
+        .data_mut(|d| d.insert_temp(Id::new("ns4_baked_plate_rect"), plate_rect.intersect(view)));
     let scale_x = plate_rect.width() / cw;
 
     let p = ui.painter().clone();
     assets.paint_plate(&p, plate_rect);
+    state
+        .baked_zoom
+        .paint_hover(&p, plate_rect, &assets.layout.bays);
 
     // 1. Pitch Stick & Mod Wheel
     if let Some(r_pitch) = assets.layout.wheels.get("pitch_stick") {

@@ -32,6 +32,7 @@ impl Core {
             watch_limit: WATCH_LIMIT,
             rwatch: u32::MAX,
             trace: None,
+            trace_dm: (0, 0),
             trace_log: Vec::new(),
             rwatch_len: 1,
             rwatch_hits: Vec::new(),
@@ -48,6 +49,9 @@ impl Core {
             sram: mem,
             iop: vec![0u32; IOP_WORDS].into_boxed_slice(),
             device: DeviceMap::default(),
+            sdram: Default::default(),
+            sdram_reads: 0,
+            sdram_writes: 0,
             preset: DeviceMap::default(),
             device_reads: 0,
             device_writes: 0,
@@ -69,6 +73,7 @@ impl Core {
             aot_lo: 0,
             aot_span: 0,
             aot_bits: Box::default(),
+            aot_slow: false,
             #[cfg(feature = "jit")]
             jit: None,
         };

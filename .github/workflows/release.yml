@@ -23,6 +23,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pinned: output format and license detection change between cargo-about releases (D238).
+  CARGO_ABOUT_VERSION: '0.8.4'
+
 # Never cancel a release in flight; two runs for one tag queue instead.
 concurrency:
   group: release-${{ inputs.tag || github.ref }}
@@ -95,7 +99,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          # Oldest Ubuntu LTS in standard support: glibc is only as old as the build system, and
+          # the AppImage catalog test runs on that LTS (D248). Bump when it leaves support.
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             exe: ''
           - os: windows-latest
@@ -127,6 +133,30 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Cache cargo-about
+        id: cargo-about
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-about
+            ~/.cargo/bin/cargo-about.exe
+          key: cargo-about-${{ env.CARGO_ABOUT_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-about
+        if: steps.cargo-about.outputs.cache-hit != 'true'
+        shell: bash
+        run: cargo install --locked "cargo-about@${CARGO_ABOUT_VERSION}"
+
+      # Fails the release when any crate has a license outside about.toml `accepted`.
+      # Covers all three target OSes (about.toml `targets`), so every job writes the same file.
+      - name: Generate THIRD_PARTY_LICENSES.html (third-party license notices)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo about generate --locked --fail --workspace --all-features \
+            -c about.toml about.hbs -o THIRD_PARTY_LICENSES.html
+          test -s THIRD_PARTY_LICENSES.html
+
       - name: Install Linux system dependencies (ALSA, JACK, X11/GL)
         if: runner.os == 'Linux'
         run: |
@@ -135,7 +165,7 @@ jobs:
           for i in 1 2 3 4 5; do
             echo "Attempt $i: Updating apt and installing dependencies..."
             if sudo apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=20 && \
-               sudo apt-get install -y --no-install-recommends -o Acquire::Retries=5 libasound2-dev libudev-dev libjack-jackd2-dev libgl-dev libx11-dev libx11-xcb-dev libxcursor-dev libxrandr-dev libxi-dev libxext-dev libxfixes-dev libxrender-dev libxinerama-dev pkg-config desktop-file-utils; then
+               sudo apt-get install -y --no-install-recommends -o Acquire::Retries=5 libasound2-dev libudev-dev libjack-jackd2-dev libgl-dev libx11-dev libx11-xcb-dev libxcursor-dev libxrandr-dev libxi-dev libxext-dev libxfixes-dev libxrender-dev libxinerama-dev libxkbcommon0 libxkbcommon-x11-0 libxcb-xkb1 pkg-config desktop-file-utils; then
               echo "Dependencies installed successfully."
               break
             fi
@@ -150,7 +180,7 @@ jobs:
           set -euo pipefail
           cargo build --release --locked --target "${{ matrix.target }}" -p nord-core --bin ns4
           cargo build --release --locked --target "${{ matrix.target }}" -p nord-gui --bin nd-matrix-1
-          cargo build --release --locked --target "${{ matrix.target }}" -p nord-plugin --bin nord-plugin-standalone
+          cargo build --release --locked --target "${{ matrix.target }}" -p nord-plugin --bin nd-matrix-1-standalone
           cargo xtask bundle nord-plugin --release --locked --target "${{ matrix.target }}"
 
       - name: Smoke test the CLI
@@ -167,12 +197,26 @@ jobs:
           if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
           python tools/release_package.py "${args[@]}"
 
+      # LGPL-2.1 (libfuse is static in the AppImage runtime): ship the corresponding source as a
+      # release asset. Every download is checked against the sha256 pins in the script (D242).
+      - name: Build AppImage runtime sources asset (Linux)
+        if: runner.os == 'Linux'
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--out dist)
+          if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
+          python tools/release_runtime_sources.py "${args[@]}"
+
       - name: Verify archive (layout, forbidden content, plugin exports, checksum)
         shell: bash
         run: |
           set -euo pipefail
           for archive in dist/*.zip dist/*.tar.gz; do
             [ -e "$archive" ] || continue
+            case "$archive" in *-appimage-runtime-sources.tar.gz) continue ;; esac
             python tools/release_verify.py "$archive" --target "${{ matrix.target }}"
           done
 
@@ -185,6 +229,11 @@ jobs:
             https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
           echo "46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1  /tmp/appimagetool" | sha256sum -c -
           chmod +x /tmp/appimagetool
+          # Pinned runtime (D242): without --runtime-file appimagetool downloads the moving
+          # `continuous` runtime. tools/release_installers.py checks the sha256 pinned in
+          # tools/release_package.py before building.
+          curl -fsSL -o /tmp/appimage-runtime \
+            https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
 
       - name: Build native OS installers and SHA256 files
         shell: bash
@@ -194,7 +243,7 @@ jobs:
           set -euo pipefail
           args=(--target "${{ matrix.target }}" --out dist)
           if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
-          if [ "${{ runner.os }}" = "Linux" ]; then args+=(--appimagetool /tmp/appimagetool); fi
+          if [ "${{ runner.os }}" = "Linux" ]; then args+=(--appimagetool /tmp/appimagetool --appimage-runtime /tmp/appimage-runtime); fi
           python tools/release_installers.py "${args[@]}"
 
       - name: Upload release artifact
@@ -262,3 +311,29 @@ jobs:
             artifacts/*.pkg
             artifacts/*.sha256
             artifacts/SHA256SUMS.txt
+
+  verify-published:
+    name: Verify published release assets
+    needs: [plan, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Download the release as a user would, check checksums and asset list
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir dl && cd dl
+          gh release download "$TAG"
+          sha256sum -c SHA256SUMS.txt
+          missing=0
+          for pat in "*-$TAG-linux-x86_64.tar.gz" "*-$TAG-windows-x86_64.zip" \
+            "*-$TAG-macos-arm64.tar.gz" "*.deb" "*.AppImage" "*-setup.exe" "*.dmg" "*.pkg" \
+            "*-appimage-runtime-sources.tar.gz"; do
+            ls $pat > /dev/null 2>&1 || { echo "::error::no asset matching $pat"; missing=1; }
+          done
+          exit $missing

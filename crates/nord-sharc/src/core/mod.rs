@@ -20,13 +20,21 @@ mod addr_hash;
 mod alu;
 mod aot;
 mod aot_emit;
+mod aot_fadd;
 mod aot_fast;
+pub mod aot_fast_bench;
+#[cfg(test)]
+mod aot_fast_sweep;
 mod aot_glue;
 pub(crate) mod aot_hot;
 mod aot_lower;
+pub(crate) mod aot_mem;
 mod aot_native;
 mod aot_pe;
+pub mod aot_prof;
+mod aot_round;
 mod aot_state;
+mod aot_whole;
 mod arith_loop;
 mod banks;
 mod bitfifo;
@@ -83,6 +91,7 @@ mod new;
 mod pcstack;
 pub mod periph;
 pub mod probe_fixture;
+pub mod sdram;
 mod shifter;
 mod shifter_bits;
 #[cfg(test)]
@@ -92,7 +101,7 @@ mod site_hits;
 mod stack_measured;
 mod stacks;
 #[cfg(test)]
-mod support;
+pub(crate) mod support;
 mod sysregs;
 mod timer;
 mod types;
@@ -162,6 +171,8 @@ pub struct Core {
     pub rwatch: u32,
     /// Register trace window `(lo, hi, limit)`: every step whose pc lies in `lo..=hi` logs R, S, I, M.
     pub trace: Option<(u32, u32, usize)>,
+    /// Data words `(address, count)` appended to every `trace` line (`count` 0 = none).
+    pub trace_dm: (u32, u32),
     /// Lines logged by `trace`.
     pub trace_log: Vec<String>,
     /// Number of consecutive words load-watched from `rwatch`.
@@ -187,6 +198,11 @@ pub struct Core {
     iop: Box<[u32]>,
     /// Sparse store for addresses outside the SRAM and IOP windows (peripherals, external bus).
     device: DeviceMap,
+    /// Dense external delay-line window `0x0800_0000..` ([`sdram`]).
+    sdram: sdram::Sdram,
+    /// Reads and writes that went to the SDRAM window (diagnostic counters).
+    pub sdram_reads: u64,
+    pub sdram_writes: u64,
     /// Values returned by device reads regardless of earlier writes (scripted status registers).
     preset: DeviceMap,
     /// Reads and writes that went to the device store (diagnostic counters).
@@ -223,6 +239,9 @@ pub struct Core {
     aot_lo: u32,
     aot_span: u32,
     aot_bits: Box<[u64]>,
+    /// Set when a lowered AOT store left the internal SRAM (`aot_mem.rs`); the generated block
+    /// then re-checks its guard signature.
+    aot_slow: bool,
     /// Optional Level-2 Cranelift JIT engine (allocated lazily on first `run_jit`).
     #[cfg(feature = "jit")]
     jit: Option<Box<jit::JitEngine>>,
@@ -302,6 +321,16 @@ impl Core {
         #[cfg(not(feature = "jit"))]
         {
             self.run(max_steps)
+        }
+    }
+
+    /// Advances the core by `cycles` cycles using the JIT when `use_jit` and the `jit` feature
+    /// are enabled, or the interpreter otherwise.
+    pub fn run_for_cycles(&mut self, cycles: u64, use_jit: bool) -> Option<Fault> {
+        if use_jit {
+            self.run_auto(cycles)
+        } else {
+            self.run(cycles)
         }
     }
 }

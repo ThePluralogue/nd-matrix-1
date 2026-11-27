@@ -15,6 +15,8 @@ pub struct Stage4PanelState {
     pub view: super::view::ViewState,
     /// Render the 1:1 offline-baked HTML/CSS panel plate (`panel_plate_2x.png`).
     pub use_baked_plate: bool,
+    /// Zoom and pan of the baked plate (`baked_zoom.rs`).
+    pub baked_zoom: super::baked_zoom::BakedZoom,
 
     // Master & Controllers (Bay 1)
     pub master_volume: f32,
@@ -123,6 +125,7 @@ impl Default for Stage4PanelState {
             program_ui: Default::default(),
             view: Default::default(),
             use_baked_plate: false,
+            baked_zoom: Default::default(),
             master_volume: 0.85,
             pitch_stick: 0.0,
             mod_wheel: 0.0,

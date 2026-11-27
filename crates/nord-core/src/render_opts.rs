@@ -407,6 +407,9 @@ pub struct FirmwareOptions {
     /// `--synth-fw-adr-law`: `SynthLayer::fw_adr_law` (amp attack scaled by the key velocity, decay
     /// record sustain 0.5, oracle envelope law, D210). Strip chain only.
     pub synth_fw_adr_law: bool,
+    /// `--synth-settled-rates`: `SynthLayer::settled_rates` (the settled envelope rate tables on the
+    /// default strip chain, D212 / D237). Strip chain only.
+    pub synth_settled_rates: bool,
     /// `--synth-osc-env-morph`: `Stage4Engine::synth_osc_env_morph` (the Osc Env Amount morph of
     /// the synth layers is played, firmware law, D206; needs the firmware morph, on by default).
     pub synth_osc_env_morph: bool,
@@ -502,6 +505,7 @@ impl Default for FirmwareOptions {
             synth_filter_gain: false,
             synth_fw_env_law: false,
             synth_fw_adr_law: false,
+            synth_settled_rates: false,
             synth_osc_env_morph: false,
             synth_knob_laws: true,
             synth_wave_bank: false,
@@ -537,6 +541,7 @@ impl FirmwareOptions {
             synth_filter_gain: false,
             synth_fw_env_law: false,
             synth_fw_adr_law: false,
+            synth_settled_rates: false,
             synth_osc_env_morph: false,
             synth_knob_laws: false,
             synth_velocity_fw: false,
@@ -598,6 +603,7 @@ impl FirmwareOptions {
             synth_filter_gain: false,
             synth_fw_env_law: false,
             synth_fw_adr_law: false,
+            synth_settled_rates: false,
             synth_osc_env_morph: false,
             synth_knob_laws: true,
             synth_wave_bank: false,
@@ -656,6 +662,11 @@ impl FirmwareOptions {
         }
         if let Some(v) = value("--b3-bass-processor") {
             o.b3_bass_processor = Some(parse_on_off("--b3-bass-processor", v)?);
+            if o.b3_bass_processor == Some(true) {
+                // a named but unusable OS update file is an error, as for the WAVE tables; an unset
+                // variable is not (the stage is not built and the layer plays the stage-off model)
+                crate::organ::b3_bass_firmware_status()?;
+            }
         }
         if has("--firmware-fx") {
             o.fx = FirmwareFx::ALL;
@@ -736,6 +747,7 @@ impl FirmwareOptions {
         o.synth_unison_weights |= has("--synth-unison-weights");
         o.synth_fw_env_law |= has("--synth-fw-env-law");
         o.synth_fw_adr_law |= has("--synth-fw-adr-law");
+        o.synth_settled_rates |= has("--synth-settled-rates");
         o.synth_osc_env_morph |= has("--synth-osc-env-morph");
         if let Some(v) = value("--synth-unison-gain") {
             let u: f32 = v
@@ -1014,7 +1026,9 @@ impl FirmwareOptions {
         crate::render_opts_fx_rate::apply_fx_idle_skip(engine, self.fx_idle_skip);
         self.set_rotary(engine);
         let bass = self.b3_bass_processor == Some(true);
-        apply_b3_tail(engine, Some(!bass && self.b3_tail.unwrap_or(true)));
+        // without an OS update file the stage is not built and nothing replaces the tail (D128)
+        let bass_stage = bass && matches!(crate::organ::b3_bass_firmware_status(), Ok(true));
+        apply_b3_tail(engine, Some(!bass_stage && self.b3_tail.unwrap_or(true)));
         for organ in [&mut engine.organ_a, &mut engine.organ_b] {
             if organ.b3_bass_processor_on() != bass {
                 organ.set_b3_bass_processor(bass);
@@ -1130,6 +1144,9 @@ impl FirmwareOptions {
         engine.synth_a.fw_adr_law = self.synth_fw_adr_law;
         engine.synth_b.fw_adr_law = self.synth_fw_adr_law;
         engine.synth_c.fw_adr_law = self.synth_fw_adr_law;
+        engine.synth_a.settled_rates = self.synth_settled_rates;
+        engine.synth_b.settled_rates = self.synth_settled_rates;
+        engine.synth_c.settled_rates = self.synth_settled_rates;
         engine.synth_osc_env_morph = self.synth_osc_env_morph;
         engine.synth_b.unison_gain = uni;
         engine.synth_c.unison_gain = uni;
@@ -1181,9 +1198,15 @@ impl FirmwareOptions {
             ));
         }
         if let Some(b) = self.b3_bass_processor {
+            let fallback = b && !matches!(crate::organ::b3_bass_firmware_status(), Ok(true));
             parts.push(format!(
-                "b3-bass-processor={}",
-                if b { "on" } else { "off" }
+                "b3-bass-processor={}{}",
+                if b { "on" } else { "off" },
+                if fallback {
+                    " (no OS update file: stage off)"
+                } else {
+                    ""
+                }
             ));
         }
         let ports = self.fx.ports_on();
@@ -1304,6 +1327,9 @@ impl FirmwareOptions {
         }
         if self.synth_fw_adr_law {
             parts.push("fw-adr-law".into());
+        }
+        if self.synth_settled_rates {
+            parts.push("settled-rates".into());
         }
         if self.synth_osc_env_morph {
             parts.push("osc-env-morph".into());
@@ -1713,6 +1739,17 @@ mod tests {
         assert!(!e.synth_a.wave_bank);
         o.apply_to(&mut e);
         assert!(e.synth_a.wave_bank && e.synth_b.wave_bank && e.synth_c.wave_bank);
+    }
+
+    #[test]
+    fn settled_rates_flag_reaches_every_synth_layer() {
+        let o = FirmwareOptions::from_args(&["--synth-settled-rates".into()]).unwrap();
+        assert!(o.synth_settled_rates && o.summary().contains("settled-rates"));
+        assert!(!FirmwareOptions::default().synth_settled_rates);
+        assert!(!FirmwareOptions::from_args(&[]).unwrap().synth_settled_rates);
+        let mut e = Stage4Engine::new(48_000.0);
+        o.apply_to(&mut e);
+        assert!(e.synth_a.settled_rates && e.synth_b.settled_rates && e.synth_c.settled_rates);
     }
 
     #[test]
@@ -2140,7 +2177,16 @@ mod tests {
         };
         let (off, on) = (render(None), render(Some(true)));
         assert!(on.iter().all(|v| v.is_finite()) && on.iter().any(|v| v.abs() > 1e-5));
-        assert_ne!(off, on);
+        // without an OS update file the stage is not built and the layer plays the stage-off model
+        let loaded = matches!(crate::organ::b3_bass_firmware_status(), Ok(true));
+        assert_eq!(off != on, loaded);
+        assert_eq!(o.summary().contains("stage off"), !loaded);
+        assert!(
+            !FirmwareOptions::from_args(&args(&["--b3-bass-processor", "off"]))
+                .unwrap()
+                .summary()
+                .contains("stage off")
+        );
         assert!(parse_on_off("--b3-bass-processor", "x").is_err());
     }
 

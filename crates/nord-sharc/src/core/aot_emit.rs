@@ -2,8 +2,12 @@
 //! code snapshot per lowered block, plus the `blocks()` table `aot_hot.rs` includes at build time
 //! (`NORD_SHARC_AOT_HOT=<file>`). Generated text is derived from firmware and never committed.
 use super::aot_lower::{AotTier, Item, Lowered, LoweredOp, MIN_BATCH};
+use super::aot_mem::MemXfer;
+use super::aot_pe::pe_supports;
+use super::aot_whole::Chk;
 use super::decode_cache::ComputeOp;
 use super::Core;
+use std::collections::BTreeMap;
 use std::fmt::Write;
 
 fn kern_name(tier: AotTier) -> &'static str {
@@ -51,11 +55,38 @@ pub(super) fn emit_module(blocks: &[Lowered], tier: AotTier) -> String {
         "crate::core::aot_hot::AotBlock",
         "crate::core::aot_native::Kern",
         "crate::core::aot_pe::Pe",
+        "crate::core::aot_glue::AotSig",
+        "crate::core::aot_mem::{Addr, Data, MemXfer}",
         "crate::core::decode_cache::ComputeOp",
+        "crate::visa::Kind",
         "crate::core::{Core, Fault}",
     ] {
         let _ = writeln!(out, "use {i};");
     }
+    // one out-of-line Pe kernel per distinct supported compute op used by a lowered transfer
+    let mut kernels: BTreeMap<String, usize> = BTreeMap::new();
+    for b in blocks {
+        for item in &b.items {
+            if let Item::Step(e) = item {
+                if let Some(MemXfer {
+                    compute: Some(c), ..
+                }) = &e.xfer
+                {
+                    if pe_supports(*c) && !kernels.contains_key(&format!("{c:?}")) {
+                        let id = kernels.len();
+                        let _ = writeln!(
+                            out,
+                            "#[inline(never)]
+fn k{id}(core: &mut Core) {{ core.aot_pe_both(ComputeOp::{c:?}, Kern::{kern}); }}"
+                        );
+                        kernels.insert(format!("{c:?}"), id);
+                    }
+                }
+            }
+        }
+    }
+    let mut handlers: BTreeMap<String, usize> = BTreeMap::new();
+    let mut hdefs = String::new();
     for (bi, b) in blocks.iter().enumerate() {
         let code: Vec<String> = b
             .code
@@ -69,8 +100,9 @@ pub(super) fn emit_module(blocks: &[Lowered], tier: AotTier) -> String {
             code.len(),
             code.join(", ")
         );
-        let mut body = String::new();
+        let mut stmts: Vec<String> = Vec::new();
         for (ii, item) in b.items.iter().enumerate() {
+            let mut body = String::new();
             match item {
                 Item::Batch(ops) => {
                     let _ = writeln!(
@@ -81,28 +113,142 @@ pub(super) fn emit_module(blocks: &[Lowered], tier: AotTier) -> String {
                     let _ = writeln!(out, "}}");
                     let _ = writeln!(
                         body,
-                        "    {{ let mut pe = Pe::load(core, false).with_kern(Kern::{kern}); b{bi}_{ii}(&mut pe); pe.store(core); }}"
+                        "    {{ let mut pe = Pe::load(core, false).with_kern(Kern::{kern}); b{bi}_{ii}(&mut pe); let st = pe.sticky(); core.aot_pe_end(false, st); }}"
                     );
                     let _ = writeln!(
                         body,
-                        "    if simd {{ let mut pe = Pe::load(core, true).with_kern(Kern::{kern}); b{bi}_{ii}(&mut pe); pe.store(core); }}"
+                        "    if simd {{ let mut pe = Pe::load(core, true).with_kern(Kern::{kern}); b{bi}_{ii}(&mut pe); let st = pe.sticky(); core.aot_pe_end(true, st); }}"
                     );
                     let _ = writeln!(body, "    core.steps += {};", ops.len());
+                }
+                Item::Step(e) => {
+                    match &e.xfer {
+                        Some(x) => {
+                            let fast = match x.compute {
+                                Some(c) if pe_supports(c) => {
+                                    format!("Some(k{})", kernels[&format!("{c:?}")])
+                                }
+                                _ => "None".to_string(),
+                            };
+                            // one out-of-line handler per distinct shape (the transfer without
+                            // its immediate, the kernel, the instruction kind and length): the
+                            // code a pass runs once per site is then a short call, and the
+                            // handler bodies stay resident in the instruction cache
+                            let shape = x.to_rust_with(Some("imm"));
+                            let key = format!("{shape}|{fast}|{:?}|{}", e.kind, e.next - e.pc);
+                            let id = match handlers.get(&key) {
+                                Some(&id) => id,
+                                None => {
+                                    let id = handlers.len();
+                                    let _ = writeln!(
+                                        hdefs,
+                                        "#[inline(never)]
+#[allow(unused_variables)]
+fn h{id}(core: &mut Core, pc: u32, imm: u32) -> Result<(), Fault> {{
+    core.pc = pc;
+    core.aot_xfer(&{shape}, pc, {fast})?;
+    core.aot_tail(pc, Kind::{:?}, pc + {});
+    Ok(())
+}}",
+                                        e.kind,
+                                        e.next - e.pc
+                                    );
+                                    handlers.insert(key, id);
+                                    id
+                                }
+                            };
+                            let _ = writeln!(
+                                body,
+                                "    h{id}(core, 0x{:x}, 0x{:x})?;",
+                                e.pc,
+                                x.imm().unwrap_or(0)
+                            );
+                        }
+                        None => {
+                            let _ = writeln!(body, "    core.aot_step(0x{:x})?;", e.pc);
+                        }
+                    }
+                    if e.last {
+                        let _ = writeln!(body, "    return Ok(true);");
+                    } else {
+                        match e.chk {
+                            Chk::None => {}
+                            Chk::Pc => {
+                                let _ = writeln!(
+                                    body,
+                                    "    if core.pc != 0x{:x} {{ return Ok(true); }}",
+                                    e.next
+                                );
+                            }
+                            Chk::Slow => {
+                                let _ = writeln!(
+                                    body,
+                                    "    if core.aot_slow {{ core.aot_slow = false; if core.aot_sig_changed(&sig) {{ return Ok(true); }} }}"
+                                );
+                            }
+                            Chk::Sig => {
+                                let _ = writeln!(
+                                    body,
+                                    "    if core.pc != 0x{:x} || core.aot_sig_changed(&sig) {{ return Ok(true); }}",
+                                    e.next
+                                );
+                            }
+                        }
+                    }
                 }
                 Item::Interp { pc, next } => {
                     let _ = writeln!(
                         body,
-                        "    if core.aot_item(0x{pc:x}, &sig, 0x{next:x})? {{ return Ok(()); }}"
+                        "    if core.aot_item(0x{pc:x}, &sig, 0x{next:x})? {{ return Ok(true); }}"
                     );
                 }
             }
+            stmts.push(body);
         }
+        // chunks of CHUNK items, each its own out-of-line function: LLVM time grows faster than
+        // linearly with function size, and a 1 800 instruction block as one function took >10 min
+        const CHUNK: usize = 24;
+        let n_chunks = stmts.len().div_ceil(CHUNK).max(1);
+        for (ci, chunk) in stmts.chunks(CHUNK).enumerate() {
+            let _ = writeln!(
+                out,
+                "#[inline(never)]
+#[allow(unused_variables, unreachable_code)]
+fn c{bi}_{ci}(core: &mut Core, sig: &AotSig) -> Result<bool, Fault> {{
+    let simd = core.simd();
+{}    Ok(false)
+}}",
+                chunk.concat()
+            );
+        }
+        let calls: String = (0..n_chunks)
+            .filter(|&ci| ci * CHUNK < stmts.len())
+            .map(|ci| {
+                format!(
+                    "    if c{bi}_{ci}(core, &sig)? {{ return Ok(()); }}
+"
+                )
+            })
+            .collect();
         let _ = writeln!(
             out,
-            "#[allow(unused_variables)]\nfn run_{bi}(core: &mut Core) -> Result<(), Fault> {{\n    let sig = core.aot_sig();\n    let simd = core.simd();\n{body}    core.pc = 0x{:x};\n    Ok(())\n}}",
-            b.exit
+            "#[allow(unused_variables, unreachable_code)]
+fn run_{bi}(core: &mut Core) -> Result<(), Fault> {{
+    let sig = core.aot_sig();
+{calls}{}    Ok(())
+}}",
+            if b.dynamic_exit {
+                String::new()
+            } else {
+                format!(
+                    "    core.pc = 0x{:x};
+",
+                    b.exit
+                )
+            }
         );
     }
+    out.push_str(&hdefs);
     let _ = writeln!(out, "static BLOCKS: [AotBlock; {}] = [", blocks.len());
     for (bi, b) in blocks.iter().enumerate() {
         let native: u32 = b
@@ -110,13 +256,13 @@ pub(super) fn emit_module(blocks: &[Lowered], tier: AotTier) -> String {
             .iter()
             .map(|i| match i {
                 Item::Batch(o) => o.len() as u32,
-                Item::Interp { .. } => 0,
+                Item::Interp { .. } | Item::Step(_) => 0,
             })
             .sum();
         let _ = writeln!(
             out,
-            "    AotBlock {{ start: 0x{:x}, last: 0x{:x}, steps: {}, native: {native}, code: &CODE_{bi}, run: run_{bi} }},",
-            b.start, b.last, b.steps
+            "    AotBlock {{ start: 0x{:x}, last: 0x{:x}, steps: {}, native: {native}, dynamic: {}, code: &CODE_{bi}, run: run_{bi} }},",
+            b.start, b.last, b.steps, b.dynamic_exit
         );
     }
     let _ = writeln!(out, "];");
@@ -198,5 +344,27 @@ mod tests {
             src.contains("Kern::Exact") && src.contains("steps: 3"),
             "{src}"
         );
+    }
+
+    #[test]
+    fn sites_of_one_shape_share_one_handler_and_pass_their_immediate() {
+        // three `R0 = DM(I2, M2)` loads and a `R1 = DM(-6, I1)` (T15b offset form) twice
+        let load = (0b1001u16 << 12) | (2 << 9) | (2 << 6) | (1 << 4);
+        let mut p = vec![load, load, load];
+        p.extend_from_slice(&[0x9208, 0x007a]);
+        p.extend_from_slice(&[0x9208, 0x007b]);
+        let c = core_with(&p);
+        let mut ex = std::collections::BTreeMap::new();
+        let mut pc = c.pc;
+        for k in 0..5 {
+            ex.insert(pc, k == 0);
+            pc += c.fetch(pc).insn.len as u32;
+        }
+        let src = c.emit_whole_pass_rust(&ex, &[], AotTier::Pe).unwrap();
+        let handlers = src.matches("fn h").count();
+        assert_eq!(handlers, 2, "{src}");
+        assert_eq!(src.matches("h0(core, ").count(), 3, "{src}");
+        assert_eq!(src.matches("h1(core, ").count(), 2, "{src}");
+        assert!(src.contains("Addr::PreImm(imm)"), "{src}");
     }
 }

@@ -2,8 +2,9 @@ import struct
 
 import pytest
 import release_package as rp
+import release_runtime_sources as rrs
 import release_verify as rv
-from test_release_package import LIN, MAC, WIN, make_tree
+from test_release_package import LIN, MAC, NOTICES_OK, WIN, make_tree
 
 README_OK = "This plugin has NOT been verified in any DAW yet."
 
@@ -33,6 +34,23 @@ def fake_pe(names):
     return bytes(image)
 
 
+def write_sources_asset(archive, skip=()):
+    """Write the `-appimage-runtime-sources.tar.gz` next to a Linux archive."""
+    import io
+    import tarfile
+
+    asset = archive.with_name(rrs.sources_name_for_archive(archive.name))
+    with tarfile.open(asset, "w:gz") as tf:
+        for name in rrs.SOURCES_FILES:
+            if name in skip:
+                continue
+            info = tarfile.TarInfo(f"{asset.name[:-7]}/{name}")
+            info.size = 4
+            tf.addfile(info, io.BytesIO(b"data"))
+    rp.write_sha256(asset)
+    return asset
+
+
 def build(tmp_path, platform, *, clap=None, vst3=None, readme=README_OK, extra=None):
     root = make_tree(tmp_path, platform)
     (root / "docs" / "RELEASE_README.txt").write_text(readme)
@@ -51,7 +69,67 @@ def build(tmp_path, platform, *, clap=None, vst3=None, readme=README_OK, extra=N
         for rel, data in extra.items():
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             (root / rel).write_bytes(data)
-    return rp.package(platform.triple, "v1.2.3", tmp_path / "out", root)
+    archive = rp.package(platform.triple, "v1.2.3", tmp_path / "out", root)
+    if platform.os == "linux":
+        write_sources_asset(archive)
+    return archive
+
+
+def _drop(archive, member):
+    """Rewrite `archive` (zip or tar.gz) without the file whose name ends in `member`."""
+    import tarfile
+    import zipfile
+
+    files = rv.read_archive(archive)
+    keep = {n: d for n, d in files.items() if not n.endswith(member)}
+    assert len(keep) == len(files) - 1
+    archive.unlink()
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(archive, "w") as zf:
+            for n, d in keep.items():
+                zf.writestr(n, d)
+    else:
+        import io
+
+        with tarfile.open(archive, "w:gz") as tf:
+            for n, d in keep.items():
+                info = tarfile.TarInfo(n)
+                info.size = len(d)
+                tf.addfile(info, io.BytesIO(d))
+    rp.write_sha256(archive)
+
+
+@pytest.mark.parametrize("platform", [WIN, LIN, MAC])
+def test_missing_third_party_notices_fails_release(tmp_path, platform):
+    archive = build(tmp_path, platform)
+    assert rv.verify(archive, platform.triple) == []
+    _drop(archive, "/THIRD_PARTY_LICENSES.html")
+    problems = rv.verify(archive, platform.triple)
+    assert "missing THIRD_PARTY_LICENSES.html" in problems
+
+
+@pytest.mark.parametrize("platform", [WIN, LIN, MAC])
+@pytest.mark.parametrize("name", ["ADDITIONAL-PERMISSIONS.md", "TRADEMARKS.md"])
+def test_missing_legal_notice_fails_release(tmp_path, platform, name):
+    archive = build(tmp_path, platform)
+    assert rv.verify(archive, platform.triple) == []
+    _drop(archive, "/" + name)
+    assert f"missing {name}" in rv.verify(archive, platform.triple)
+
+
+def test_stub_or_wrong_third_party_notices_fail_release(tmp_path):
+    stub = build(tmp_path / "a", LIN, extra={"THIRD_PARTY_LICENSES.html": b"<html></html>"})
+    assert any("bytes (expected a full listing)" in p for p in rv.verify(stub, LIN.triple))
+    no_text = b"x" * 5000
+    bad = build(tmp_path / "b", LIN, extra={"THIRD_PARTY_LICENSES.html": no_text})
+    problems = rv.verify(bad, LIN.triple)
+    assert "THIRD_PARTY_LICENSES.html lacks 'MIT License'" in problems
+    assert "THIRD_PARTY_LICENSES.html lacks 'Apache License'" in problems
+
+
+def test_check_notices_accepts_real_listing_and_ignores_absent():
+    assert rv.check_notices(NOTICES_OK.encode()) == []
+    assert rv.check_notices(None) == []  # reported by check_layout
 
 
 def test_pe_exports_parses_names():
@@ -168,3 +246,114 @@ def test_main_unreadable_archive(tmp_path, capsys):
     bad = tmp_path / "nd-matrix-1-v1-linux-x86_64.tar.gz"
     bad.write_bytes(b"not gzip")
     assert rv.main([str(bad)]) == 1
+
+
+def test_linux_archive_without_runtime_notices_fails_release(tmp_path):
+    archive = build(tmp_path, LIN)
+    assert rv.verify(archive, LIN.triple) == []
+    _drop(archive, "/licenses/appimage-runtime/libfuse-LGPL-2.1.txt")
+    problems = rv.verify(archive, LIN.triple)
+    assert "missing licenses/appimage-runtime/libfuse-LGPL-2.1.txt" in problems
+
+
+def test_runtime_notices_empty_or_wrong_libfuse_text_fail_release():
+    base = rv.APPIMAGE_RUNTIME_DIR
+    rel = {f"{base}/{n}": b"text" for n in rv.APPIMAGE_RUNTIME_FILES}
+    assert any("not the GNU LGPL" in p for p in rv.check_runtime_notices(rel))
+    rel[f"{base}/libfuse-LGPL-2.1.txt"] = b"GNU LESSER GENERAL PUBLIC LICENSE"
+    assert rv.check_runtime_notices(rel) == []
+    rel[f"{base}/musl-LICENSE.txt"] = b"  \n"
+    assert rv.check_runtime_notices(rel) == [f"{base}/musl-LICENSE.txt is empty"]
+
+
+@pytest.mark.parametrize("platform", [WIN, MAC])
+def test_runtime_notices_not_required_outside_linux(tmp_path, platform):
+    assert not any(f.startswith("licenses/") for f in rv.expected_files(platform))
+
+
+def test_linux_release_without_sources_asset_fails(tmp_path):
+    archive = build(tmp_path, LIN)
+    asset = archive.with_name(rrs.sources_name_for_archive(archive.name))
+    asset.unlink()
+    problems = rv.verify(archive, LIN.triple)
+    assert any("appimage-runtime-sources.tar.gz (LGPL-2.1" in p for p in problems)
+
+
+def test_sources_asset_must_be_complete_and_checksummed(tmp_path):
+    archive = build(tmp_path, LIN)
+    write_sources_asset(archive, skip=("fuse-3.15.0.tar.xz",))
+    problems = rv.verify(archive, LIN.triple)
+    assert any("lacks fuse-3.15.0.tar.xz" in p for p in problems)
+    asset = archive.with_name(rrs.sources_name_for_archive(archive.name))
+    asset.with_name(asset.name + ".sha256").unlink()
+    assert any(
+        p.startswith("missing") and p.endswith(".sha256") for p in rv.verify(archive, LIN.triple)
+    )
+
+
+def test_sources_asset_not_required_for_windows_and_macos(tmp_path):
+    for platform in (WIN, MAC):
+        assert rv.verify(build(tmp_path / platform.name, platform), platform.triple) == []
+
+
+def test_sources_name_for_archive():
+    assert (
+        rrs.sources_name_for_archive("nd-matrix-1-v1.2.3-linux-x86_64.tar.gz")
+        == "nd-matrix-1-v1.2.3-appimage-runtime-sources.tar.gz"
+    )
+    assert rrs.sources_name_for_archive("nd-matrix-1-v1.2.3-windows-x86_64.zip") is None
+
+
+@pytest.mark.parametrize("platform", [WIN, LIN, MAC])
+def test_shipped_binaries_and_bundles_have_no_vendor_prefix(tmp_path, platform):
+    """ns4-b9rn: a clean archive passes, and none of the shipped names starts with `nord-`."""
+    archive = build(tmp_path, platform)
+    names = [p for p in rv.read_archive(archive)]
+    assert rv.check_vendor_names(archive.name, names) == []
+    assert not any(part.lower().startswith("nord-") for n in names for part in n.split("/"))
+    assert not any(b.lower().startswith("nord-") for b in rp.BINS)
+
+
+def test_vendor_prefixed_binary_fails_release(tmp_path, monkeypatch):
+    """The pre-rename `nord-plugin-standalone` is rejected even when it is the expected binary."""
+    old = ("ns4", "nd-matrix-1", "nord-plugin-standalone")
+    monkeypatch.setattr(rp, "BINS", old)
+    monkeypatch.setattr(rv, "BINS", old)  # layout check now expects it, so only the new check fires
+    archive = build(tmp_path, WIN)
+    problems = rv.verify(archive, WIN.triple)
+    assert problems and all("nord-plugin-standalone.exe" in p and "'nord-'" in p for p in problems)
+
+
+def test_vendor_prefixed_bundle_fails_release(tmp_path):
+    """A `nord-plugin.vst3` bundle folder is rejected, whatever is inside."""
+    import io
+    import tarfile
+
+    archive = build(tmp_path, LIN)
+    files = rv.read_archive(archive)
+    top = next(iter(files)).split("/", 1)[0]
+    files[f"{top}/nord-plugin.vst3/Contents/x86_64-linux/nord-plugin.so"] = b"x"
+    with tarfile.open(archive, "w:gz") as tf:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+    rp.write_sha256(archive)
+    problems = rv.verify(archive, LIN.triple)
+    assert any("'nord-plugin.vst3'" in p for p in problems)
+    assert any("'nord-plugin.so'" in p for p in problems)
+
+
+def test_vendor_prefixed_archive_name_fails_release():
+    problems = rv.check_vendor_names("Nord-Stage-4-v1.zip", ["Nord-Stage-4-v1/ns4.exe"])
+    assert any("archive name" in p for p in problems)
+    assert not any("'ns4.exe'" in p for p in problems)
+    assert any("'Nord-Stage-4-v1'" in p for p in problems)
+
+
+def test_check_vendor_names_clean_and_deduplicates():
+    assert (
+        rv.check_vendor_names("nd-matrix-1-v1-linux.tar.gz", ["top/ns4", "top/nd-matrix-1"]) == []
+    )
+    paths = ["top/nord-x/a", "top/nord-x/b"]
+    assert len(rv.check_vendor_names("ok.zip", paths)) == 1

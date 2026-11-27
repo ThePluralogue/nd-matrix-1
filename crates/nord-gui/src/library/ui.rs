@@ -38,7 +38,7 @@ impl BackupLibraryState {
             ui.add_enabled_ui(self.backup_path.is_some(), |ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut self.export_path)
-                        .desired_width(170.0)
+                        .desired_width(crate::text_scale::px(170.0))
                         .hint_text("Export path (.ns4b)"),
                 );
                 if ui
@@ -81,8 +81,8 @@ impl BackupLibraryState {
         path: &std::path::Path,
         dialog: &mut crate::debug_dialog::DebugDialogState,
     ) {
-        match self.open_backup_path(path) {
-            Ok(()) => {
+        match self.add_backup_path(path) {
+            Ok(_) => {
                 self.path_input = path.display().to_string();
                 self.error_message = None;
                 dialog.open_tab(crate::debug_dialog::DebugTab::Library);
@@ -127,7 +127,8 @@ impl BackupLibraryState {
     ) {
         ui.horizontal(|ui| {
             ui.label("Backup (.ns4b):");
-            let input_w = (ui.available_width() - 156.0).max(160.0);
+            let input_w = (ui.available_width() - crate::text_scale::px(156.0))
+                .max(crate::text_scale::px(160.0));
             let field_h = ui.spacing().interact_size.y;
             let edit = ui.add(
                 egui::TextEdit::singleline(&mut self.path_input)
@@ -206,7 +207,7 @@ impl BackupLibraryState {
                     },
                     _ => {
                         self.path_input = p.display().to_string();
-                        if let Err(err) = self.open_backup_path(&p) {
+                        if let Err(err) = self.add_backup_path(&p) {
                             self.error_message = Some(err);
                         }
                     }
@@ -231,6 +232,33 @@ impl BackupLibraryState {
                 self.pianos.len(),
                 self.samples.len()
             ));
+        }
+        if self.is_open() {
+            ui.add_space(2.0);
+            ui.horizontal_wrapped(|ui| {
+                let names: Vec<String> = self
+                    .bank_paths()
+                    .iter()
+                    .map(|p| {
+                        p.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("bank")
+                            .to_string()
+                    })
+                    .collect();
+                ui.small(format!(
+                    "Banks ({}): {}  •  Export / Organize use the first",
+                    names.len(),
+                    names.join(", ")
+                ));
+                if ui
+                    .small_button("Close all")
+                    .on_hover_text("Close every bank. Browse / Open / drag-and-drop adds more banks to the open ones.")
+                    .clicked()
+                {
+                    self.close_banks();
+                }
+            });
         }
 
         ui.add_space(6.0);
@@ -266,8 +294,8 @@ impl BackupLibraryState {
             let field_h = ui.spacing().interact_size.y;
             ui.add(
                 egui::TextEdit::singleline(&mut self.filter)
-                    .desired_width(280.0)
-                    .min_size(egui::vec2(280.0, field_h))
+                    .desired_width(crate::text_scale::px(280.0))
+                    .min_size(egui::vec2(crate::text_scale::px(280.0), field_h))
                     .margin(egui::Margin::symmetric(8, 5))
                     .vertical_align(egui::Align::Center)
                     .hint_text("Search preset, piano, or sample..."),
