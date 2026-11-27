@@ -50,7 +50,7 @@ Tagged releases ship `ns4` (CLI), `nd-matrix-1` (GUI), `nord-plugin-standalone`,
 - **macOS (arm64):** `.pkg` installer (selectable app, VST3 & CLAP), `.dmg` disk image, and portable `.tar.gz`
 - **Linux (x86_64):** `.deb` package, portable `.AppImage` (run with `--install-plugins` to copy CLAP/VST3 to `~/.clap` and `~/.vst3`), and `.tar.gz`
 
-All builds are unsigned and provided **AS IS, without warranty or support of any kind**. The plugin has **not** been verified in any DAW yet ([docs/HOST_COMPATIBILITY.md](docs/HOST_COMPATIBILITY.md)). Maintainers: see [docs/RELEASING.md](docs/RELEASING.md).
+All builds are unsigned and provided **AS IS, without warranty or support of any kind**. The plugin has been checked by hand in SoundCraft 0.20.1 (VST3, program load and bounce) and FL Studio (top bar and program load) on Windows; no other host is verified ([docs/HOST_COMPATIBILITY.md](docs/HOST_COMPATIBILITY.md) section 7). Maintainers: see [docs/RELEASING.md](docs/RELEASING.md).
 
 **Real WAVE sounds (optional, one time):** the WAVE wavetables are Nord firmware and are not in this repository. Download the official Nord OS update and give that file to the app (`nd-matrix-1`: button "Nord OS update file", or `ns4 firmware set <file>`); see [Where to get the Nord OS update](docs/guides/nord-os-update.md). Without it a placeholder wavetable plays. `nd-matrix-1`, `ns4` and the plugin (CLAP/VST3) use the saved file; `nord-tools` keeps the placeholder wavetable.
 

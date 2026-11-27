@@ -108,7 +108,7 @@ fn new_ctx(tempo: f64) -> Ctx {
 
 fn activate(sample_rate: f32, max_block: u32) -> NdMatrix1Plugin {
     let mut plugin = NdMatrix1Plugin::default();
-    nord_plugin::auto_library::ignore_saved_library();
+    plugin.library_source = nord_plugin::auto_library::LibrarySource::None;
     let ok = plugin.initialize(
         &NdMatrix1Plugin::AUDIO_IO_LAYOUTS[0],
         &BufferConfig {
@@ -219,7 +219,7 @@ fn reset_and_reactivation_keep_the_plugin_sound_and_finite() {
     plugin.reset();
     plugin.deactivate();
     // Re-activation at another rate, as a host does after a project sample-rate change.
-    nord_plugin::auto_library::ignore_saved_library();
+    plugin.library_source = nord_plugin::auto_library::LibrarySource::None;
     let ok = plugin.initialize(
         &NdMatrix1Plugin::AUDIO_IO_LAYOUTS[0],
         &BufferConfig {

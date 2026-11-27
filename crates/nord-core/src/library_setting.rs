@@ -139,59 +139,6 @@ pub(crate) mod tests {
     use crate::cbin::ProgramDecoded;
     use crate::user_config::UserConfig;
 
-    /// A PKZIP archive of stored (uncompressed) members, enough for `Ns4BackupArchive`.
-    pub(crate) fn stored_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
-        let mut out = Vec::new();
-        let mut central = Vec::new();
-        for (name, data) in files {
-            let offset = out.len() as u32;
-            let (n, size) = (name.len() as u16, data.len() as u32);
-            let crc = crc32(data);
-            out.extend_from_slice(&[0x50, 0x4B, 0x03, 0x04, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-            out.extend_from_slice(&crc.to_le_bytes());
-            out.extend_from_slice(&size.to_le_bytes());
-            out.extend_from_slice(&size.to_le_bytes());
-            out.extend_from_slice(&n.to_le_bytes());
-            out.extend_from_slice(&0u16.to_le_bytes());
-            out.extend_from_slice(name.as_bytes());
-            out.extend_from_slice(data);
-            central
-                .extend_from_slice(&[0x50, 0x4B, 0x01, 0x02, 20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-            central.extend_from_slice(&crc.to_le_bytes());
-            central.extend_from_slice(&size.to_le_bytes());
-            central.extend_from_slice(&size.to_le_bytes());
-            central.extend_from_slice(&n.to_le_bytes());
-            central.extend_from_slice(&[0; 12]);
-            central.extend_from_slice(&offset.to_le_bytes());
-            central.extend_from_slice(name.as_bytes());
-        }
-        let (cd_offset, cd_size, count) =
-            (out.len() as u32, central.len() as u32, files.len() as u16);
-        out.extend_from_slice(&central);
-        out.extend_from_slice(&[0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0]);
-        out.extend_from_slice(&count.to_le_bytes());
-        out.extend_from_slice(&count.to_le_bytes());
-        out.extend_from_slice(&cd_size.to_le_bytes());
-        out.extend_from_slice(&cd_offset.to_le_bytes());
-        out.extend_from_slice(&0u16.to_le_bytes());
-        out
-    }
-
-    fn crc32(data: &[u8]) -> u32 {
-        let mut c = 0xFFFF_FFFFu32;
-        for b in data {
-            c ^= u32::from(*b);
-            for _ in 0..8 {
-                c = if c & 1 != 0 {
-                    (c >> 1) ^ 0xEDB8_8320
-                } else {
-                    c >> 1
-                };
-            }
-        }
-        !c
-    }
-
     /// A one-program backup on disk, at bank 0 location 0.
     pub(crate) fn one_program_backup(name: &str) -> PathBuf {
         let bytes = ProgramDecoded::default()
@@ -199,7 +146,8 @@ pub(crate) mod tests {
             .expect("encode")
             .to_bytes();
         let path = std::env::temp_dir().join(format!("ns4-lib-{name}-{}.ns4b", std::process::id()));
-        std::fs::write(&path, stored_zip(&[("Programs/Test.ns4p", &bytes)])).unwrap();
+        let zip = crate::cbin::stored_archive(&[("Programs/Test.ns4p", &bytes)]).expect("archive");
+        std::fs::write(&path, zip).unwrap();
         path
     }
 

@@ -56,8 +56,10 @@ use std::sync::Arc;
 
 /// How long `initialize` waits for the library program to be decoded (the host may render right
 /// after it: a bounce). ASSUMED: above the largest factory piano (218 MB, about 9 s on a desktop)
-/// with margin for several instances sharing one decode.
-const LOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+/// shared by several instances, and below the time after which hosts report a plugin as hung.
+/// Past it the program still arrives through `process()` (the async path) and `plugin.log`
+/// says so.
+const LOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// The Nord Stage 4 DAW Plugin.
 pub struct NdMatrix1Plugin {
@@ -82,6 +84,8 @@ pub struct NdMatrix1Plugin {
     pub library: Option<auto_library::LibraryLink>,
     /// The `library_program` value last sent to the worker; a change in `process()` sends again.
     last_library_program: i32,
+    /// Where the library comes from: the user's saved one, or what a test or tool sets.
+    pub library_source: auto_library::LibrarySource,
 }
 
 impl Default for NdMatrix1Plugin {
@@ -103,6 +107,7 @@ impl Default for NdMatrix1Plugin {
             load_rx,
             library: None,
             last_library_program: -1,
+            library_source: auto_library::LibrarySource::Saved,
         }
     }
 }
@@ -147,18 +152,19 @@ impl NdMatrix1Plugin {
         self.request_library_program()
     }
 
-    /// Sends `library_program` to the worker when it changed. No allocation, no lock. `true`
-    /// when a request was sent.
+    /// Sends `library_program` to the worker when it differs from the last value sent. No
+    /// allocation, no lock. `true` when a request went out; a refused one (queue full, no
+    /// worker) is not remembered, so the next block sends it again.
     fn request_library_program(&mut self) -> bool {
         let want = self.params.library_program.value();
         if want == self.last_library_program {
             return false;
         }
-        self.last_library_program = want;
-        match &self.library {
-            Some(link) => link.request(want),
-            None => false,
+        let sent = self.library.as_ref().is_some_and(|link| link.request(want));
+        if sent {
+            self.last_library_program = want;
         }
+        sent
     }
 
     /// Waits for the worker to finish the program asked for in [`Self::start_library`] and
@@ -245,7 +251,7 @@ impl Plugin for NdMatrix1Plugin {
         wave_tables::install_saved_in_background();
         // The saved sound library: the wanted program is decoded off-thread, queued, and
         // applied before the first block (the host may render at once).
-        if self.start_library(auto_library::saved_library()) {
+        if self.start_library(self.library_source.path()) {
             auto_library::report(&format!(
                 "initialize: {:?} at {} Hz, loading program {}",
                 buffer_config.process_mode,
@@ -407,7 +413,7 @@ mod tests {
     fn test_editor_keybed_note_reaches_process_output() {
         let mut plugin = NdMatrix1Plugin::default();
         let mut init_ctx = MockInitContext;
-        crate::auto_library::ignore_saved_library();
+        plugin.library_source = crate::auto_library::LibrarySource::None;
         plugin.initialize(
             &NdMatrix1Plugin::AUDIO_IO_LAYOUTS[0],
             &BufferConfig {
@@ -504,7 +510,7 @@ mod tests {
     fn test_plugin_process_buffer_zero_alloc() {
         let mut plugin = NdMatrix1Plugin::default();
         let mut init_ctx = MockInitContext;
-        crate::auto_library::ignore_saved_library();
+        plugin.library_source = crate::auto_library::LibrarySource::None;
         plugin.initialize(
             &NdMatrix1Plugin::AUDIO_IO_LAYOUTS[0],
             &BufferConfig {

@@ -69,13 +69,25 @@ pub fn load_queue(capacity: usize) -> (LoadSender, LoadReceiver) {
     (LoadSender(tx), LoadReceiver(rx))
 }
 
+/// Why [`LoadSender::push`] did not queue a job. The job travels back by value, like the
+/// queue's own slots hold it.
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum Refused {
+    /// The queue is full: here is the job back, for once `process()` has drained some.
+    Full(LoadJob),
+    /// Nobody will ever drain the queue: the plugin instance that owned it is gone.
+    Closed,
+}
+
 impl LoadSender {
-    /// Queues one job; gives it back when the queue is full.
+    /// Queues one job; says why when it cannot.
     #[allow(clippy::result_large_err)]
-    pub fn push(&self, job: LoadJob) -> Result<(), LoadJob> {
+    pub fn push(&self, job: LoadJob) -> Result<(), Refused> {
         match self.0.try_send(job) {
             Ok(()) => Ok(()),
-            Err(TrySendError::Full(j) | TrySendError::Disconnected(j)) => Err(j),
+            Err(TrySendError::Full(j)) => Err(Refused::Full(j)),
+            Err(TrySendError::Disconnected(_)) => Err(Refused::Closed),
         }
     }
 }
@@ -236,10 +248,16 @@ mod tests {
             layer: 0,
             sound: None,
         });
-        assert!(matches!(back, Err(LoadJob::Sample { .. })));
+        assert!(matches!(back, Err(Refused::Full(LoadJob::Sample { .. }))));
         assert!(matches!(rx.pop(), Some(LoadJob::Firmware(_))));
         assert!(matches!(rx.pop(), Some(LoadJob::Piano { .. })));
         assert!(rx.pop().is_none() && rx.is_empty());
+        // A queue nobody drains any more says so, instead of handing the job back.
+        drop(rx);
+        assert!(matches!(
+            tx.push(LoadJob::WaveBank(true)),
+            Err(Refused::Closed)
+        ));
     }
 
     #[test]

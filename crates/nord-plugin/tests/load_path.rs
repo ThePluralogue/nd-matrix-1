@@ -105,7 +105,7 @@ fn ctx() -> Ctx {
 
 fn activate() -> NdMatrix1Plugin {
     let mut plugin = NdMatrix1Plugin::default();
-    nord_plugin::auto_library::ignore_saved_library();
+    plugin.library_source = nord_plugin::auto_library::LibrarySource::None;
     let ok = plugin.initialize(
         &NdMatrix1Plugin::AUDIO_IO_LAYOUTS[1],
         &BufferConfig {
@@ -282,41 +282,6 @@ fn frame(ctx: &egui::Context, egui_state: &EguiState, st: &mut EditorState) -> u
         .len()
 }
 
-/// A stored zip (CRC 0, as the library's own test fixtures) holding the given entries.
-fn stored_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
-    let (mut out, mut central) = (Vec::new(), Vec::new());
-    for (name, data) in files {
-        let offset = out.len() as u32;
-        let (size, n) = (data.len() as u32, name.len() as u16);
-        out.extend_from_slice(&[0x50, 0x4B, 0x03, 0x04, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        out.extend_from_slice(&0u32.to_le_bytes());
-        out.extend_from_slice(&size.to_le_bytes());
-        out.extend_from_slice(&size.to_le_bytes());
-        out.extend_from_slice(&n.to_le_bytes());
-        out.extend_from_slice(&0u16.to_le_bytes());
-        out.extend_from_slice(name.as_bytes());
-        out.extend_from_slice(data);
-
-        central.extend_from_slice(&[0x50, 0x4B, 0x01, 0x02, 20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        central.extend_from_slice(&0u32.to_le_bytes());
-        central.extend_from_slice(&size.to_le_bytes());
-        central.extend_from_slice(&size.to_le_bytes());
-        central.extend_from_slice(&n.to_le_bytes());
-        central.extend_from_slice(&[0; 12]);
-        central.extend_from_slice(&offset.to_le_bytes());
-        central.extend_from_slice(name.as_bytes());
-    }
-    let (cd_offset, cd_size, count) = (out.len() as u32, central.len() as u32, files.len() as u16);
-    out.extend_from_slice(&central);
-    out.extend_from_slice(&[0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0]);
-    out.extend_from_slice(&count.to_le_bytes());
-    out.extend_from_slice(&count.to_le_bytes());
-    out.extend_from_slice(&cd_size.to_le_bytes());
-    out.extend_from_slice(&cd_offset.to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes());
-    out
-}
-
 /// The done-criterion without a DAW: OPEN .NS4B, open a `.ns4b`, pick a program in the library
 /// tab, and it sounds in `process()`.
 #[test]
@@ -324,7 +289,8 @@ fn open_ns4b_then_load_a_program_and_it_sounds() {
     let mut plugin = activate();
     let index =
         Arc::new(ParamIndex::new(plugin.params.as_ref()).with_program_hold(plugin.params.clone()));
-    let mut st = EditorState::new(index, plugin.note_tx.clone(), plugin.load_tx.clone());
+    let mut st =
+        EditorState::with_library(index, plugin.note_tx.clone(), plugin.load_tx.clone(), None);
     let egui_state = EguiState::from_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1);
     let ctx = egui::Context::default();
     let closed = frame(&ctx, &egui_state, &mut st);
@@ -343,7 +309,7 @@ fn open_ns4b_then_load_a_program_and_it_sounds() {
     let path = std::env::temp_dir().join(format!("nd-load-path-{}.ns4b", std::process::id()));
     std::fs::write(
         &path,
-        stored_zip(&[("Programs/Load Path Test.ns4p", &bytes)]),
+        nord_core::cbin::stored_archive(&[("Programs/Load Path Test.ns4p", &bytes)]).unwrap(),
     )
     .unwrap();
     st.library.open_backup_path(&path).expect("open .ns4b");
@@ -374,7 +340,8 @@ fn open_ns4b_then_load_a_program_and_it_sounds() {
 fn a_load_with_no_audio_thread_running_is_reported_not_lost_silently() {
     let plugin = NdMatrix1Plugin::default();
     let index = Arc::new(ParamIndex::new(plugin.params.as_ref()));
-    let mut st = EditorState::new(index, plugin.note_tx.clone(), plugin.load_tx.clone());
+    let mut st =
+        EditorState::with_library(index, plugin.note_tx.clone(), plugin.load_tx.clone(), None);
     let egui_state = EguiState::from_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1);
     let ctx = egui::Context::default();
     // Nothing drains the queue (no process()): after its capacity the loads are rejected.

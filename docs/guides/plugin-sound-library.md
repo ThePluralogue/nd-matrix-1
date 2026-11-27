@@ -21,10 +21,13 @@ The value is saved with the project, so a reopened project loads the same progra
 
 ## What to expect
 
-- Adding the instrument, or opening a project, waits a few seconds while the program's banks decode (a factory grand piano is 218 MB); instances of the same program share one decode. `NS4_LIBRARY=none` in the host's environment switches the library off for that run.
+- Adding the instrument, or opening a project, waits a few seconds while the program's banks decode (a factory grand piano is 218 MB); instances of the same program share one decode. The wait stops after 15 seconds and the program then arrives while the host runs. `NS4_LIBRARY=none` in the host's environment switches the library off for that run.
 
 - No library saved, or the file moved: the plugin starts and plays its built-in sounds; `ns4 library status` says why.
-- What the plugin loaded, and why a load failed, is appended to `plugin.log` next to the settings file (`%APPDATA%\ns4\plugin.log` on Windows).
+- What the plugin loaded, and why a load failed, is appended to `plugin.log` next to the settings file (`%APPDATA%\ns4\plugin.log` on Windows); the file is emptied once it passes 1 MB.
 - The DAW must be running the plugin (playback or monitoring on) for a load to apply; a load waits up to 30 seconds for that.
+- If the Nord OS update tables are not in after 5 seconds, the program plays its WAVE sounds from the placeholder tables; a later program change picks the real ones up, and `plugin.log` says so.
 - A program whose piano or sample bank is not in the library plays without that layer, like the keyboard's "Piano not found".
 - Moving a knob of a group (organ, synth, ...) after a load gives that group back to the host parameters, as in the editor (D218).
+- In a host that does show the plugin window, the Library & Backup tab of the editor opens on the saved library, so its program list and the `Program` parameter name the same sounds.
+- The desktop app (`nd-matrix-1`) opens the same saved library at start when it is given no `--backup`, and loads its first program `A:11` when no `--program` is given, so the display shows a program and the keys sound wherever it is launched from. What it found is appended to `app.log` next to the settings file.
