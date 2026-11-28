@@ -1,0 +1,110 @@
+# Fork-only: an Intel macOS (x86_64, macOS 11 Big Sur and later) build of the app, the
+# standalone wrapper, the CLI and the CLAP/VST3 plugins, packaged like release.yml does
+# (archive, .dmg, .pkg) and uploaded as a workflow artifact. Nothing is published.
+name: Mac Intel build
+
+on:
+  push:
+    branches:
+      - 'mac-build/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_ABOUT_VERSION: '0.8.4'
+  TARGET: x86_64-apple-darwin
+  MACOSX_DEPLOYMENT_TARGET: '11.0'
+
+jobs:
+  build:
+    name: Build (x86_64-apple-darwin, macOS 11+)
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: mac-intel-${{ env.TARGET }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache cargo-about
+        id: cargo-about
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-about
+          key: cargo-about-${{ env.CARGO_ABOUT_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-about
+        if: steps.cargo-about.outputs.cache-hit != 'true'
+        run: cargo install --locked "cargo-about@${CARGO_ABOUT_VERSION}"
+
+      - name: Generate THIRD_PARTY_LICENSES.html
+        run: |
+          set -euo pipefail
+          cargo about generate --locked --fail --workspace --all-features \
+            -c about.toml about.hbs -o THIRD_PARTY_LICENSES.html
+          test -s THIRD_PARTY_LICENSES.html
+
+      - name: Toolchain and target report
+        run: |
+          rustc -vV
+          sw_vers
+          xcodebuild -version || true
+          echo "MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
+
+      # Separate invocations on purpose: one combined build would unify nord-gui features.
+      - name: Build release binaries and plugin bundles
+        run: |
+          set -euo pipefail
+          cargo build --release --locked --target "$TARGET" -p nord-core --bin ns4
+          cargo build --release --locked --target "$TARGET" -p nord-gui --bin nd-matrix-1
+          cargo build --release --locked --target "$TARGET" -p nord-plugin --bin nd-matrix-1-standalone
+          cargo xtask bundle nord-plugin --release --locked --target "$TARGET"
+
+      - name: Smoke test the CLI and report the minimum macOS of the binaries
+        run: |
+          set -euo pipefail
+          target/$TARGET/release/ns4 info
+          for f in target/$TARGET/release/ns4 target/$TARGET/release/nd-matrix-1                    target/$TARGET/release/nd-matrix-1-standalone                    $(find target -path '*/Contents/MacOS/nd-matrix-1' -type f); do
+            echo "== $f"; file "$f"
+            otool -l "$f" | grep -E 'minos|^ +version|LC_BUILD_VERSION|LC_VERSION_MIN' | head -6
+          done
+
+      - name: Package archive and SHA256 file
+        run: python tools/release_package.py --target "$TARGET" --out dist
+
+      - name: Verify archive
+        run: |
+          set -euo pipefail
+          for archive in dist/*.tar.gz; do
+            python tools/release_verify.py "$archive" --target "$TARGET"
+          done
+
+      - name: Build .dmg and .pkg
+        run: python tools/release_installers.py --target "$TARGET" --out dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nd-matrix-1-macos-x86_64
+          path: |
+            dist/*.tar.gz
+            dist/*.dmg
+            dist/*.pkg
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30

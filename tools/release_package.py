@@ -108,6 +108,7 @@ PLATFORMS = {
     "x86_64-unknown-linux-gnu": Platform("x86_64-unknown-linux-gnu", "linux-x86_64", "tar.gz", ""),
     "x86_64-pc-windows-msvc": Platform("x86_64-pc-windows-msvc", "windows-x86_64", "zip", ".exe"),
     "aarch64-apple-darwin": Platform("aarch64-apple-darwin", "macos-arm64", "tar.gz", ""),
+    "x86_64-apple-darwin": Platform("x86_64-apple-darwin", "macos-x86_64", "tar.gz", ""),
 }
 
 

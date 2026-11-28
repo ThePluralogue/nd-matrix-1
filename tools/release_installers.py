@@ -598,9 +598,10 @@ def stage_macos_dmg(
     target_dir: Path | None = None,
     *,
     create_symlinks: bool = True,
+    target: str = "aarch64-apple-darwin",
 ) -> tuple[Path, Path]:
     """Stage macOS `.dmg` folder with `.app`, plugins, CLI, and OS install symlinks."""
-    platform = PLATFORMS["aarch64-apple-darwin"]
+    platform = PLATFORMS[target]
     raw_stage = work_dir / "macos-raw"
     if raw_stage.exists():
         shutil.rmtree(raw_stage)
@@ -633,12 +634,17 @@ def stage_macos_dmg(
     return dmg_stage, dmg_path
 
 
-def render_macos_distribution_xml(label: str) -> str:
+def macos_host_arch(target: str) -> str:
+    """`hostArchitectures` of the `.pkg` for a macOS target triple."""
+    return "x86_64" if target.startswith("x86_64-") else "arm64"
+
+
+def render_macos_distribution_xml(label: str, host_arch: str = "arm64") -> str:
     ver = numeric_version(label)
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>{APP_DISPLAY_NAME} {_strip_v(label)}</title>
-    <options customize="allow" require-scripts="false" hostArchitectures="arm64"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="{host_arch}"/>
     <domains enable_localSystem="true"/>
     <readme file="README.txt"/>
     <license file="LICENSE"/>
@@ -672,9 +678,10 @@ def stage_macos_pkg_roots(
     work_dir: Path,
     root: Path = ROOT,
     target_dir: Path | None = None,
+    target: str = "aarch64-apple-darwin",
 ) -> dict[str, Path]:
     """Stage component roots and `distribution.xml` for `pkgbuild`/`productbuild`."""
-    platform = PLATFORMS["aarch64-apple-darwin"]
+    platform = PLATFORMS[target]
     raw_stage = work_dir / "macos-raw-pkg"
     if raw_stage.exists():
         shutil.rmtree(raw_stage)
@@ -734,7 +741,9 @@ def stage_macos_pkg_roots(
     write_macos_license(raw_stage, resources)
 
     dist_xml = pkg_work / "distribution.xml"
-    dist_xml.write_text(render_macos_distribution_xml(label), encoding="utf-8", newline="\n")
+    dist_xml.write_text(
+        render_macos_distribution_xml(label, macos_host_arch(target)), encoding="utf-8", newline="\n"
+    )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     pkg_path = out_dir / f"nd-matrix-1-{label}-{platform.name}.pkg"
@@ -757,8 +766,11 @@ def build_macos_dmg(
     work_dir: Path,
     root: Path = ROOT,
     target_dir: Path | None = None,
+    target: str = "aarch64-apple-darwin",
 ) -> Path:
-    dmg_stage, dmg_path = stage_macos_dmg(label, out_dir, work_dir, root, target_dir)
+    dmg_stage, dmg_path = stage_macos_dmg(
+        label, out_dir, work_dir, root, target_dir, target=target
+    )
     subprocess.run(
         [
             "hdiutil",
@@ -784,8 +796,9 @@ def build_macos_pkg(
     work_dir: Path,
     root: Path = ROOT,
     target_dir: Path | None = None,
+    target: str = "aarch64-apple-darwin",
 ) -> Path:
-    paths = stage_macos_pkg_roots(label, out_dir, work_dir, root, target_dir)
+    paths = stage_macos_pkg_roots(label, out_dir, work_dir, root, target_dir, target=target)
     ver = numeric_version(label)
     pkg_work = paths["pkg_work"]
     for name, root_key, id_suffix, scripts_key in (
@@ -862,6 +875,7 @@ def main(argv: list[str] | None = None) -> int:
         "x86_64-pc-windows-msvc": ("inno",),
         "x86_64-unknown-linux-gnu": ("deb", "appimage"),
         "aarch64-apple-darwin": ("dmg", "pkg"),
+        "x86_64-apple-darwin": ("dmg", "pkg"),
     }[args.target]
     formats = args.formats or list(default_formats)
 
@@ -887,9 +901,17 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         elif fmt == "dmg":
-            built.append(build_macos_dmg(label, args.out, args.work, args.root, args.target_dir))
+            built.append(
+                build_macos_dmg(
+                    label, args.out, args.work, args.root, args.target_dir, target=args.target
+                )
+            )
         elif fmt == "pkg":
-            built.append(build_macos_pkg(label, args.out, args.work, args.root, args.target_dir))
+            built.append(
+                build_macos_pkg(
+                    label, args.out, args.work, args.root, args.target_dir, target=args.target
+                )
+            )
     for path in built:
         print(path)
     return 0

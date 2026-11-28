@@ -27,6 +27,7 @@ targets = [
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
     "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
 ]
 
 # Dev-dependencies are never shipped. Build-dependencies run at build time only but
